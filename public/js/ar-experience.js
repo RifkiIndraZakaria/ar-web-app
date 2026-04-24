@@ -362,14 +362,38 @@ function buildScene(exp) {
   const scene = document.createElement("a-scene");
   scene.setAttribute("embedded", "");
   scene.setAttribute("loading-screen", "enabled: false");
-  scene.setAttribute("renderer", "antialias: true; alpha: true;");
+
+  // FIX LAYAR HITAM #1 — renderer:
+  //   alpha: true          → canvas WebGL transparan (kamera pass-through terlihat)
+  //   colorSpace: sRGB     → warna benar di Android Chrome
+  //   premultipliedAlpha: false → compositing benar, tidak ada artefak hitam
+  scene.setAttribute(
+    "renderer",
+    [
+      "antialias: true",
+      "alpha: true",
+      "colorSpace: sRGB",
+      "premultipliedAlpha: false",
+    ].join("; "),
+  );
+
   scene.setAttribute("vr-mode-ui", "enabled: false");
-  scene.setAttribute("background", "transparent: true");
+
+  // FIX LAYAR HITAM #2 — background: color: transparent
+  // A-Frame default background adalah hitam opaque.
+  // "transparent: true" saja terkadang tidak cukup — kombinasikan dengan color.
+  scene.setAttribute("background", "color: transparent; transparent: true");
 
   // WebXR immersive-ar dengan hit-test feature
+  // FIX LAYAR HITAM #3 — dom-overlay memungkinkan HUD HTML tetap tampil
+  // di atas feed kamera WebXR tanpa layar hitam di browser lama
   scene.setAttribute(
     "webxr",
-    "optionalFeatures: hit-test, local-floor; requiredFeatures: hit-test;",
+    [
+      "optionalFeatures: hit-test, local-floor, dom-overlay",
+      "requiredFeatures: hit-test",
+      "overlayElement: #hud",
+    ].join("; "),
   );
 
   // Lighting ambient + directional agar model terlihat baik
@@ -700,7 +724,7 @@ function bindUI() {
       setStatus("Membangun scene…");
       await sleep(300);
 
-      buildScene(state.experience);
+      const scene = buildScene(state.experience);
       setupAudio(state.experience);
 
       state.userStarted = true;
@@ -725,19 +749,48 @@ function bindUI() {
           "Tap: letakkan  |  Cubit: skala  |  Geser: putar  |  Ketuk 2×: reset";
       }
 
-      hideLoading();
-      setStatus("Arahkan kamera ke lantai atau meja…", "");
-      autoplayAudio("start");
+      // FIX LAYAR HITAM #4 — enterAR() wajib dipanggil dari dalam
+      // user gesture (click handler) agar browser mengizinkan akses kamera
+      // WebXR. Tanpa ini kamera tidak pernah aktif → layar tetap hitam.
+      setStatus("Memulai sesi AR…");
+      document.body.classList.add("ar-active");
+      await new Promise(function (resolve, reject) {
+        // Tunggu scene selesai di-attach ke DOM dulu
+        function tryEnterAR() {
+          if (!scene.hasLoaded && !scene.renderStarted) {
+            scene.addEventListener("loaded", tryEnterAR, { once: true });
+            return;
+          }
+          scene
+            .enterAR()
+            .then(resolve)
+            .catch(function (err) {
+              reject(new Error("Gagal memulai AR: " + err.message));
+            });
+        }
+        tryEnterAR();
+        // Timeout safety
+        setTimeout(function () {
+          resolve();
+        }, 3000);
+      });
 
       // Lacak sesi XR untuk cleanup
-      if (state.scene) {
-        state.scene.addEventListener("enter-vr", function () {
-          const renderer = state.scene.renderer;
-          if (renderer && renderer.xr) {
-            state.xrSession = renderer.xr.getSession();
-          }
-        });
-      }
+      scene.addEventListener("enter-vr", function () {
+        const renderer = scene.renderer;
+        if (renderer && renderer.xr) {
+          state.xrSession = renderer.xr.getSession();
+        }
+        hideLoading();
+        setStatus("Arahkan kamera ke lantai atau meja…", "");
+        autoplayAudio("start");
+      });
+
+      // Fallback jika enter-vr tidak terpicu dalam 4 detik
+      setTimeout(function () {
+        hideLoading();
+        setStatus("Arahkan kamera ke lantai atau meja…", "");
+      }, 4000);
     } catch (err) {
       hideLoading();
       showBoot();

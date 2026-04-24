@@ -70,7 +70,10 @@
         display: none !important;
       }
 
-      /* WebXR canvas harus full-screen & di atas semua layer */
+      /* WebXR canvas — biarkan browser mengelola compositing kamera.
+               z-index: 1 agar tidak menimpa HUD (z-index 20).
+               WebXR pass-through kamera dirender oleh browser di bawah canvas,
+               bukan oleh elemen canvas itu sendiri. */
       body > canvas,
       a-scene canvas,
       #scene-host canvas {
@@ -83,7 +86,10 @@
         height: 100vh !important;
         max-width: none !important;
         max-height: none !important;
-        z-index: 3;
+        /* z-index 1 — di bawah HUD (20) tapi di atas body background */
+        z-index: 1;
+        /* FIX LAYAR HITAM: background canvas harus transparan */
+        background: transparent !important;
       }
 
       /* ─── Utility ────────────────────────────────────────── */
@@ -96,6 +102,12 @@
         position: fixed;
         inset: 0;
         z-index: 1;
+        background: transparent;
+      }
+
+      /* Saat AR aktif, pastikan body tidak memblokir feed kamera */
+      body.ar-active {
+        background: transparent !important;
       }
 
       /* ─── Placed Indicator ───────────────────────────────── */
