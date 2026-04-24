@@ -17,6 +17,7 @@ const state = {
   baseRotationY: 0,
   currentRotationY: 0,
   markerVisible: false,
+  placed: false, // true setelah marker pertama kali terdeteksi
   userStarted: false,
   speechActive: false,
   cameraReady: false,
@@ -159,6 +160,12 @@ function buildScene() {
     "sourceType: webcam; videoTexture: false; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;",
   );
 
+  // Wajib: A-Frame background component defaultnya opaque hitam,
+  // ini yang menyebabkan layar hitam di belakang AR.js video.
+  // transparent: true membuat canvas WebGL benar-benar transparan
+  // sehingga video kamera di belakangnya terlihat.
+  scene.setAttribute("background", "transparent: true");
+
   const assets = document.createElement("a-assets");
   assets.setAttribute("timeout", "10000");
   scene.appendChild(assets);
@@ -209,7 +216,8 @@ function waitForCameraVideo(timeoutMs) {
         return;
       }
 
-      const v = document.querySelector("video");
+      // Cari video AR.js, bukan preview kita (#camera-preview)
+      const v = document.querySelector("video:not(#camera-preview)");
       if (v) {
         if (v.readyState >= 2 && !v.paused) {
           return finish(v);
@@ -313,17 +321,40 @@ function buildMarkerScene(exp) {
 
   marker.addEventListener("markerFound", function () {
     state.markerVisible = true;
-    setStatus("✓ Marker terdeteksi!", "success");
     const ind = qs("#marker-indicator");
     if (ind) ind.classList.add("found");
+
+    if (!state.placed) {
+      // Deteksi pertama kali — tandai object sudah "terpasang"
+      state.placed = true;
+      setStatus("✓ Objek terpasang! Marker bisa dijauhkan.", "success");
+    } else {
+      setStatus("✓ Marker terdeteksi!", "success");
+    }
+
     autoplayAudio("marker");
   });
 
   marker.addEventListener("markerLost", function () {
     state.markerVisible = false;
-    setStatus("Marker hilang — arahkan kembali ke marker.", "");
     const ind = qs("#marker-indicator");
     if (ind) ind.classList.remove("found");
+
+    if (state.placed) {
+      // Object sudah pernah muncul — override AR.js yang menyembunyikan
+      // object saat marker hilang. rAF memastikan override berjalan
+      // setelah AR.js selesai set object3D.visible = false.
+      requestAnimationFrame(function () {
+        if (state.markerElement) {
+          state.markerElement.object3D.visible = true;
+        }
+      });
+      setStatus("Objek terpasang di permukaan. ✓", "success");
+    } else {
+      // Belum pernah terdeteksi sama sekali
+      setStatus("Arahkan kamera ke marker.", "");
+    }
+
     if (exp.audio && exp.audio.pauseOnMarkerLost && state.audioElement) {
       state.audioElement.pause();
     }
@@ -689,9 +720,8 @@ function bindUI() {
         throw e;
       }
 
-      // Hentikan preview sebelum AR.js ambil alih stream kamera
-      stopCameraPreview();
-
+      // Preview stream dibiarkan jalan — kamera tetap tampil selama
+      // AR.js scene dibangun. AR.js akan membuka streamnya sendiri.
       showLoading("Membangun scene AR\u2026");
       hideBoot();
 
@@ -712,8 +742,11 @@ function bindUI() {
 
       try {
         await waitForCameraVideo(15000);
+        // AR.js sudah punya streamnya sendiri — preview bisa dilepas
+        stopCameraPreview();
         setStatus("Kamera aktif \u2014 arahkan ke marker.", "success");
       } catch (_) {
+        // AR.js video belum muncul tapi kamera preview masih tampil
         setStatus("Arahkan kamera ke marker jika tampil.", "");
       }
 
