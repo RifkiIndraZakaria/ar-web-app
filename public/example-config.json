@@ -1,0 +1,28 @@
+{
+  "type": "ar_model",
+  "version": "1.0",
+  "model": "https://example.com/models/sample.glb",
+  "name": "Sample 3D Model",
+  "author": "Your Name",
+  "description": "Deskripsi lengkap model 3D Anda",
+  "tags": ["3d", "ar", "interactive"],
+  "audio": {
+    "url": "https://example.com/audio/background.mp3",
+    "autoPlay": true,
+    "loop": true,
+    "volume": 0.7
+  },
+  "metadata": {
+    "created": "2024-04-24",
+    "updated": "2024-04-24",
+    "version": "1.0.0",
+    "size": 5242880,
+    "format": "GLTF"
+  },
+  "interactions": {
+    "allowRotation": true,
+    "allowZoom": true,
+    "autoRotate": false,
+    "autoRotateSpeed": 2
+  }
+}

@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AR 3D Viewer - Scan QR Code</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #333;
+      }
+
+      .container {
+        width: 100%;
+        max-width: 1000px;
+        padding: 20px;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+        color: white;
+      }
+
+      .header h1 {
+        font-size: 2.5em;
+        margin-bottom: 10px;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+      }
+
+      .header p {
+        font-size: 1.1em;
+        opacity: 0.9;
+      }
+
+      .content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+
+      @media (max-width: 768px) {
+        .content {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .card {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        transition:
+          transform 0.3s ease,
+          box-shadow 0.3s ease;
+      }
+
+      .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 50px rgba(0, 0, 0, 0.3);
+      }
+
+      .card h2 {
+        color: #667eea;
+        margin-bottom: 20px;
+        font-size: 1.5em;
+      }
+
+      .card h3 {
+        color: #764ba2;
+        margin: 15px 0 10px 0;
+        font-size: 1.1em;
+      }
+
+      .scanner-section {
+        text-align: center;
+      }
+
+      #qr-scanner {
+        width: 100%;
+        max-width: 400px;
+        margin: 20px auto;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 2px solid #667eea;
+      }
+
+      .scan-button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 12px 30px;
+        font-size: 1em;
+        border-radius: 5px;
+        cursor: pointer;
+        margin: 10px 5px;
+        transition: transform 0.2s ease;
+      }
+
+      .scan-button:hover {
+        transform: scale(1.05);
+      }
+
+      .scan-button:active {
+        transform: scale(0.95);
+      }
+
+      #viewer-container {
+        width: 100%;
+        height: 500px;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 2px solid #667eea;
+        background: #f0f0f0;
+        position: relative;
+      }
+
+      .controls {
+        margin-top: 20px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+      }
+
+      .control-btn {
+        background: #667eea;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 0.95em;
+        transition: background 0.3s ease;
+      }
+
+      .control-btn:hover {
+        background: #764ba2;
+      }
+
+      .control-btn.audio {
+        background: #f093fb;
+      }
+
+      .control-btn.audio:hover {
+        background: #f093fb;
+        opacity: 0.8;
+      }
+
+      .control-btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+
+      .info-section {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 15px 0;
+        border-left: 4px solid #667eea;
+      }
+
+      .info-section h4 {
+        color: #667eea;
+        margin-bottom: 10px;
+      }
+
+      .info-section p {
+        font-size: 0.95em;
+        line-height: 1.6;
+        color: #555;
+      }
+
+      .status {
+        margin-top: 20px;
+        padding: 10px;
+        border-radius: 5px;
+        text-align: center;
+        font-weight: bold;
+      }
+
+      .status.success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+
+      .status.error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+
+      .status.info {
+        background: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+      }
+
+      .loading {
+        display: none;
+        text-align: center;
+        color: #667eea;
+      }
+
+      .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #667eea;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 10px;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .credit {
+        text-align: center;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 0.9em;
+        margin-top: 30px;
+      }
+
+      .demo-qr {
+        text-align: center;
+        margin-top: 20px;
+      }
+
+      .demo-qr img {
+        max-width: 200px;
+        border-radius: 10px;
+        border: 3px solid white;
+      }
+
+      .demo-qr p {
+        color: white;
+        margin-top: 10px;
+        font-size: 0.9em;
+      }
+
+      canvas {
+        max-width: 100%;
+        height: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🎯 AR 3D Viewer</h1>
+        <p>Scan QR Code untuk menampilkan Objek 3D Interaktif</p>
+      </div>
+
+      <div class="content">
+        <!-- QR Scanner Section -->
+        <div class="card">
+          <h2>📱 Pemindai QR Code</h2>
+          <div class="scanner-section">
+            <video id="qr-scanner" playsinline></video>
+            <div class="controls">
+              <button class="scan-button" onclick="startScanning()">
+                🔄 Mulai Scan
+              </button>
+              <button class="scan-button" onclick="stopScanning()">
+                ⏹ Hentikan
+              </button>
+            </div>
+            <div
+              id="scanner-status"
+              class="status info"
+              style="display: none"
+            ></div>
+          </div>
+
+          <div class="info-section">
+            <h4>📋 Instruksi:</h4>
+            <p>1. Klik "Mulai Scan" untuk mengaktifkan kamera</p>
+            <p>2. Arahkan ke QR Code yang ingin di-scan</p>
+            <p>3. Sistem akan otomatis menampilkan objek 3D</p>
+            <p>4. Gunakan kontrol untuk berinteraksi dengan objek</p>
+          </div>
+
+          <div class="demo-qr">
+            <p><strong>Demo QR Code:</strong></p>
+            <img
+              id="demo-qr-code"
+              src="qr/demo.png"
+              alt="Demo QR Code"
+              style="max-width: 150px"
+            />
+            <p>
+              Scan atau
+              <button
+                class="scan-button"
+                id="demo-button"
+                onclick="handleDemoClick()"
+                style="padding: 8px 15px; font-size: 0.9em"
+              >
+                Klik untuk Demo
+              </button>
+            </p>
+          </div>
+        </div>
+
+        <!-- 3D Viewer Section -->
+        <div class="card">
+          <h2>🎨 Viewer 3D</h2>
+          <div id="viewer-container"></div>
+
+          <div class="controls">
+            <button class="control-btn" onclick="resetCamera()">
+              🔄 Reset
+            </button>
+            <button class="control-btn" onclick="toggleFullscreen()">
+              ⛶ Fullscreen
+            </button>
+            <button class="control-btn audio" onclick="toggleAudio()">
+              🔊 Audio
+            </button>
+            <button class="control-btn" onclick="downloadModel()">
+              ⬇ Download
+            </button>
+          </div>
+
+          <div class="info-section">
+            <h4>🎮 Kontrol Interaktif:</h4>
+            <p><strong>Mouse/Touch:</strong></p>
+            <p>• Drag: Rotasi Objek</p>
+            <p>• Scroll/Pinch: Zoom In/Out</p>
+            <p><strong>Keyboard:</strong></p>
+            <p>• Arrow Keys: Rotasi</p>
+            <p>• +/- : Zoom</p>
+            <p>• Space: Play/Pause Audio</p>
+          </div>
+
+          <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Memuat Objek 3D...</p>
+          </div>
+
+          <div
+            id="viewer-status"
+            class="status info"
+            style="display: none"
+          ></div>
+        </div>
+      </div>
+
+      <!-- Object Details -->
+      <div class="card">
+        <h2>ℹ️ Informasi Objek</h2>
+        <div id="object-details" class="info-section">
+          <p>Scan QR Code atau klik Demo untuk melihat informasi objek 3D</p>
+        </div>
+      </div>
+
+      <div class="credit">
+        <p>AR Web App v1.0 | Powered by Three.js + AR.js | © 2024</p>
+      </div>
+    </div>
+
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/three@r128/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://unpkg.com/three@r128/examples/js/controls/TrackballControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+
+    <!-- Custom Scripts -->
+    <script src="js/ar-viewer.js"></script>
+    <script src="js/qr-scanner.js"></script>
+    <script src="js/audio-manager.js"></script>
+  </body>
+</html>

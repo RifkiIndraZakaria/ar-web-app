@@ -1,0 +1,418 @@
+<!--
+AR Web App - Advanced Examples & Customization Guide
+This file shows advanced usage and customization options
+-->
+
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AR Web App - Advanced Examples</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .example {
+        background: white;
+        padding: 20px;
+        margin: 20px 0;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      }
+      code {
+        background: #f0f0f0;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: monospace;
+      }
+      pre {
+        background: #2d2d2d;
+        color: #f8f8f2;
+        padding: 15px;
+        border-radius: 5px;
+        overflow-x: auto;
+      }
+      h1 {
+        color: #667eea;
+      }
+      h2 {
+        color: #764ba2;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🎓 AR Web App - Advanced Examples</h1>
+
+    <div class="example">
+      <h2>1. Load Multiple Models Sequentially</h2>
+      <p>Menampilkan beberapa model dan beralih antar model:</p>
+      <pre><code>
+// Setup model list
+const modelList = [
+    { url: 'model1.glb', name: 'Model 1' },
+    { url: 'model2.glb', name: 'Model 2' },
+    { url: 'model3.glb', name: 'Model 3' }
+];
+
+let currentIndex = 0;
+
+function nextModel() {
+    currentIndex = (currentIndex + 1) % modelList.length;
+    const model = modelList[currentIndex];
+    load3DModel(model.url, model.name);
+}
+
+function prevModel() {
+    currentIndex = (currentIndex - 1 + modelList.length) % modelList.length;
+    const model = modelList[currentIndex];
+    load3DModel(model.url, model.name);
+}
+
+// Add buttons to HTML
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight') nextModel();
+    if (e.key === 'ArrowLeft') prevModel();
+});
+        </code></pre>
+    </div>
+
+    <div class="example">
+      <h2>2. Custom Lighting Setup</h2>
+      <p>Mengubah lighting untuk efek khusus:</p>
+      <pre><code>
+// Ganti fungsi setupLighting() di ar-viewer.js
+
+function setupCustomLighting() {
+    // Dramatic lighting dengan shadow
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    scene.add(ambientLight);
+
+    // Key light
+    const mainLight = new THREE.DirectionalLight(0xffd700, 1.2);
+    mainLight.position.set(10, 10, 5);
+    mainLight.castShadow = true;
+    scene.add(mainLight);
+
+    // Fill light (opposite side)
+    const fillLight = new THREE.DirectionalLight(0x87ceeb, 0.6);
+    fillLight.position.set(-10, 5, -10);
+    scene.add(fillLight);
+
+    // Back light (rim light)
+    const rimLight = new THREE.PointLight(0xff6b9d, 0.8);
+    rimLight.position.set(0, 0, -15);
+    scene.add(rimLight);
+}
+        </code></pre>
+    </div>
+
+    <div class="example">
+      <h2>3. Model Animation Control</h2>
+      <p>Kontrol animasi model GLTF:</p>
+      <pre><code>
+let mixer = null;
+const actions = [];
+let currentAction = null;
+
+// Di dalam loadGLTFModel function
+if (gltf.animations && gltf.animations.length > 0) {
+    mixer = new THREE.AnimationMixer(gltf.scene);
+    
+    gltf.animations.forEach((clip, index) => {
+        const action = mixer.clipAction(clip);
+        actions.push(action);
+        console.log(`Animation ${index}: ${clip.name}`);
+    });
+    
+    gltf.scene.userData.mixer = mixer;
+}
+
+// Functions untuk control
+function playAnimation(index) {
+    if (currentAction) currentAction.stop();
+    if (actions[index]) {
+        currentAction = actions[index];
+        currentAction.play();
+    }
+}
+
+function pauseAnimation() {
+    if (mixer) mixer.timeScale = 0;
+}
+
+function resumeAnimation() {
+    if (mixer) mixer.timeScale = 1;
+}
+
+// Keyboard control
+document.addEventListener('keydown', (e) => {
+    if (e.key === '1') playAnimation(0);
+    if (e.key === '2') playAnimation(1);
+    if (e.key === '3') playAnimation(2);
+});
+        </code></pre>
+    </div>
+
+    <div class="example">
+      <h2>4. Advanced Audio Control</h2>
+      <p>Kontrol audio lanjutan dengan volume control:</p>
+      <pre><code>
+// Add HTML slider
+/*
+&lt;input type="range" id="volume-slider" min="0" max="100" value="70"&gt;
+*/
+
+const volumeSlider = document.getElementById('volume-slider');
+
+volumeSlider.addEventListener('input', (e) => {
+    setVolume(e.target.value / 100);
+});
+
+// Get audio duration
+function getAudioDuration() {
+    if (audioElement) {
+        return audioElement.duration;
+    }
+    return 0;
+}
+
+// Seek to position
+function seekAudio(seconds) {
+    if (audioElement) {
+        audioElement.currentTime = seconds;
+    }
+}
+
+// Get current time
+function getCurrentTime() {
+    if (audioElement) {
+        return audioElement.currentTime;
+    }
+    return 0;
+}
+
+// Play specific segment
+function playSegment(start, end) {
+    if (audioElement) {
+        audioElement.currentTime = start;
+        audioElement.play();
+        
+        const duration = end - start;
+        setTimeout(() => { audioElement.pause(); }, duration * 1000);
+    }
+}
+        </code></pre>
+    </div>
+
+    <div class="example">
+      <h2>5. Custom Camera Angles</h2>
+      <p>Simpan dan muat preset camera positions:</p>
+      <pre><code>
+const cameraPresets = {};
+
+// Save current camera position
+function saveCameraPreset(name) {
+    cameraPresets[name] = {
+        position: camera.position.clone(),
+        target: controls.target.clone()
+    };
+    console.log(`Camera preset saved: ${name}`);
+}
+
+// Load preset
+function loadCameraPreset(name) {
+    if (cameraPresets[name]) {
+        const preset = cameraPresets[name];
+        camera.position.copy(preset.position);
+        controls.target.copy(preset.target);
+        controls.update();
+    }
+}
+
+// Example presets
+document.addEventListener('load', () => {
+    // Front view
+    saveCameraPreset('front');
+    camera.position.set(0, 0, 3);
+    
+    // Top view
+    saveCameraPreset('top');
+    camera.position.set(0, 3, 0);
+    
+    // Side view
+    saveCameraPreset('side');
+    camera.position.set(3, 0, 0);
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    if (e.key === '1') loadCameraPreset('front');
+    if (e.key === '2') loadCameraPreset('top');
+    if (e.key === '3') loadCameraPreset('side');
+});
+        </code></pre>
+    </div>
+
+    <div class="example">
+      <h2>6. AR Marker Detection (Advanced)</h2>
+      <p>Menggunakan AR.js untuk QR marker detection:</p>
+      <pre><code>
+// Include AR.js library
+/*
+&lt;script src="https://cdn.jsdelivr.net/npm/ar.js@3/aframe/aframe-ar.js"&gt;&lt;/script&gt;
+*/
+
+// Custom marker tracking
+function setupARMarkerDetection() {
+    const arSystem = {
+        init: function() {
+            this.aframeScene = document.querySelector('a-scene');
+            this.camera = this.aframeScene.querySelector('[camera]');
+        },
+        
+        onMarkerFound: function(markerId) {
+            console.log('Marker found:', markerId);
+            // Load appropriate model
+            loadModelForMarker(markerId);
+        },
+        
+        onMarkerLost: function(markerId) {
+            console.log('Marker lost:', markerId);
+            // Hide model or show fallback
+        }
+    };
+    
+    return arSystem;
+}
+
+// Mapping markers ke models
+const markerToModel = {
+    'marker-1': { url: 'model1.glb', name: 'Model 1' },
+    'marker-2': { url: 'model2.glb', name: 'Model 2' },
+    'marker-3': { url: 'model3.glb', name: 'Model 3' }
+};
+
+function loadModelForMarker(markerId) {
+    if (markerToModel[markerId]) {
+        const modelData = markerToModel[markerId];
+        load3DModel(modelData.url, modelData.name);
+    }
+}
+        </code></pre>
+    </div>
+
+    <div class="example">
+      <h2>7. Model Recording & Snapshot</h2>
+      <p>Rekam viewport sebagai screenshot atau video:</p>
+      <pre><code>
+// Screenshot
+function takeScreenshot() {
+    renderer.render(scene, camera);
+    renderer.domElement.toBlob(function(blob) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `ar-screenshot-${Date.now()}.png`;
+        link.click();
+    });
+}
+
+// Video Recording (advanced)
+function startVideoRecording() {
+    const canvas = renderer.domElement;
+    const stream = canvas.captureStream(30); // 30 FPS
+    
+    const mediaRecorder = new MediaRecorder(stream);
+    const chunks = [];
+    
+    mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+    mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `ar-video-${Date.now()}.webm`;
+        link.click();
+    };
+    
+    mediaRecorder.start();
+    return mediaRecorder;
+}
+
+// Usage
+document.addEventListener('keydown', (e) => {
+    if (e.key === 's' || e.key === 'S') takeScreenshot();
+});
+        </code></pre>
+    </div>
+
+    <div class="example">
+      <h2>8. Physics & Interactivity</h2>
+      <p>Tambahkan physics simulation dengan Cannon.js:</p>
+      <pre><code>
+// Include Cannon.js
+/*
+&lt;script src="https://cdn.jsdelivr.net/npm/cannon@0.19.0/build/cannon.min.js"&gt;&lt;/script&gt;
+*/
+
+let world = null;
+
+function initializePhysics() {
+    world = new CANNON.World();
+    world.gravity.set(0, -9.82, 0);
+    world.broadphase = new CANNON.NaiveBroadphase();
+    world.solver.iterations = 10;
+    world.defaultContactMaterial.friction = 0.4;
+}
+
+function addPhysicsToModel(model) {
+    if (!world) initializePhysics();
+    
+    const shape = new CANNON.Box(new CANNON.Vec3(1, 1, 1));
+    const body = new CANNON.Body({ mass: 1 });
+    body.addShape(shape);
+    world.addBody(body);
+    
+    model.userData.physicsBody = body;
+}
+
+function updatePhysics(deltaTime) {
+    if (world) {
+        world.step(1/60, deltaTime, 3);
+        
+        if (currentModel && currentModel.userData.physicsBody) {
+            const body = currentModel.userData.physicsBody;
+            currentModel.position.copy(body.position);
+            currentModel.quaternion.copy(body.quaternion);
+        }
+    }
+}
+        </code></pre>
+    </div>
+
+    <div class="example">
+      <h2>Resources & Tips</h2>
+      <ul>
+        <li><strong>Three.js Docs:</strong> https://threejs.org/docs/</li>
+        <li><strong>Cannon.js Physics:</strong> https://www.cannonjs.org/</li>
+        <li>
+          <strong>AR.js Documentation:</strong>
+          https://ar-js-org.github.io/AR.js-Docs/
+        </li>
+        <li>
+          <strong>Blender Export Tips:</strong> Use GLTF 2.0 format for best
+          results
+        </li>
+        <li><strong>Performance:</strong> Monitor inspector (F12) for FPS</li>
+        <li>
+          <strong>Mobile Testing:</strong> Use ngrok for tunneling localhost to
+          public URL
+        </li>
+      </ul>
+    </div>
+  </body>
+</html>

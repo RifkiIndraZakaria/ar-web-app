@@ -1,0 +1,26 @@
+{
+  "name": "ar-web-app",
+  "version": "1.0.0",
+  "description": "Web-based AR application with 3D objects, audio, and interactivity",
+  "main": "index.js",
+  "scripts": {
+    "serve": "npx http-server public -p 8080 -c-1",
+    "generate-qr": "node scripts/generateQR.js",
+    "dev": "npx http-server public -p 8080 -c-1 --cors"
+  },
+  "keywords": [
+    "AR",
+    "QR",
+    "3D",
+    "Web",
+    "Interactive"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "qrcode": "^1.5.3"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
