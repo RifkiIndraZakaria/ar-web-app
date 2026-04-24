@@ -6,13 +6,13 @@
   "experiences": [
     {
       "id": "demo-hiro",
-      "title": "Demo Hiro Character",
-      "description": "QR membuka halaman ini, lalu marker Hiro memunculkan Character.glb dengan kontrol rotasi, skala, dan audio berbasis speech.",
-      "bootText": "Untuk demo cepat, buka halaman ini dari ponsel lalu arahkan kamera ke marker preset Hiro.",
+      "title": "Demo Hiro — Character 3D",
+      "description": "Scan QR untuk membuka halaman ini, lalu arahkan kamera ke marker Hiro agar Character 3D muncul. Gunakan gestur sentuh atau tombol untuk berinteraksi.",
+      "bootText": "Siapkan marker Hiro (dapat diunduh dari AR.js docs). Scan marker dengan kamera setelah AR aktif.",
       "marker": {
         "preset": "hiro",
         "label": "Preset Hiro",
-        "printHint": "Gunakan marker preset Hiro dari dokumentasi AR.js atau tempel marker custom Anda pada kartu/poster yang sama dengan QR."
+        "printHint": "Cetak atau tampilkan marker Hiro dari dokumentasi AR.js (https://ar-js-org.github.io/AR.js-Docs/). Arahkan kamera ke marker hitam-putih itu."
       },
       "model": {
         "src": "models/Character.glb",
@@ -22,28 +22,32 @@
         "animationMixer": true
       },
       "audio": {
-        "speechText": "Selamat datang di demo AR Hiro. Objek tiga dimensi sudah tampil di atas marker.",
+        "speechText": "Selamat datang di demo AR. Objek tiga dimensi kini tampil di atas marker Hiro. Gunakan gestur cubit untuk mengubah ukuran, atau geser untuk memutar.",
         "lang": "id-ID",
         "autoplayOnMarker": true,
-        "pauseOnMarkerLost": false
+        "autoplayOnStart": false,
+        "pauseOnMarkerLost": false,
+        "loop": false,
+        "volume": 0.9
       },
       "interaction": {
         "rotateStep": 15,
         "scaleStep": 0.15,
-        "minScale": 0.4,
-        "maxScale": 2.4,
-        "autoRotate": false
+        "minScale": 0.3,
+        "maxScale": 2.5,
+        "autoRotate": false,
+        "autoRotateStep": 0.5
       }
     },
     {
       "id": "demo-kanji",
-      "title": "Demo Kanji Auto Rotate",
-      "description": "Experience kedua dengan marker preset Kanji dan auto-rotate aktif. Cocok sebagai contoh menambah QR dan marker lain.",
-      "bootText": "Buka dari perangkat mobile, izinkan kamera, lalu arahkan ke marker preset Kanji.",
+      "title": "Demo Kanji — Auto Rotate",
+      "description": "Experience dengan marker Kanji dan auto-rotate aktif. Model berputar otomatis saat marker terdeteksi. Cocok sebagai demo animasi AR.",
+      "bootText": "Siapkan marker Kanji dari AR.js. Arahkan kamera ke marker setelah AR aktif.",
       "marker": {
         "preset": "kanji",
         "label": "Preset Kanji",
-        "printHint": "Siapkan marker preset Kanji dari dokumentasi AR.js agar experience ini dapat dideteksi."
+        "printHint": "Cetak atau tampilkan marker Kanji dari dokumentasi AR.js. Marker ini berbeda dari Hiro — pastikan menggunakan yang benar."
       },
       "model": {
         "src": "models/Character.glb",
@@ -53,16 +57,19 @@
         "animationMixer": true
       },
       "audio": {
-        "speechText": "Ini adalah demo Kanji. Anda bisa menambah file audio MP3 sendiri di folder audio.",
+        "speechText": "Demo Kanji aktif. Model berputar otomatis. Cubit layar untuk mengubah ukuran, atau gunakan tombol di bawah.",
         "lang": "id-ID",
-        "autoplayOnMarker": false,
-        "pauseOnMarkerLost": false
+        "autoplayOnMarker": true,
+        "autoplayOnStart": false,
+        "pauseOnMarkerLost": false,
+        "loop": false,
+        "volume": 0.9
       },
       "interaction": {
         "rotateStep": 20,
         "scaleStep": 0.1,
-        "minScale": 0.5,
-        "maxScale": 2.1,
+        "minScale": 0.3,
+        "maxScale": 2.5,
         "autoRotate": true,
         "autoRotateStep": 0.5
       }

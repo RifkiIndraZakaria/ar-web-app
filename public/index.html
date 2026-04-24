@@ -1,386 +1,556 @@
 <!doctype html>
 <html lang="id">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AR Experience Launcher</title>
-    <style>
-      :root {
-        --bg: #f4efe6;
-        --panel: rgba(255, 251, 245, 0.92);
-        --panel-border: rgba(48, 35, 22, 0.12);
-        --ink: #22170f;
-        --muted: #6f5b4d;
-        --accent: #c5622d;
-        --accent-dark: #8d431b;
-        --success: #1e7a45;
-        --shadow: 0 24px 60px rgba(49, 31, 15, 0.14);
-      }
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>AR Experience Launcher</title>
+        <style>
+            :root {
+                --bg: #f4efe6;
+                --panel: rgba(255, 251, 245, 0.92);
+                --panel-border: rgba(48, 35, 22, 0.12);
+                --ink: #22170f;
+                --muted: #6f5b4d;
+                --accent: #c5622d;
+                --accent-dark: #8d431b;
+                --success: #1e7a45;
+                --shadow: 0 24px 60px rgba(49, 31, 15, 0.14);
+            }
 
-      * {
-        box-sizing: border-box;
-      }
+            * {
+                box-sizing: border-box;
+            }
 
-      body {
-        margin: 0;
-        min-height: 100vh;
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        color: var(--ink);
-        background:
-          radial-gradient(circle at top left, rgba(197, 98, 45, 0.16), transparent 30%),
-          radial-gradient(circle at top right, rgba(39, 92, 137, 0.18), transparent 28%),
-          linear-gradient(180deg, #fbf7f0 0%, var(--bg) 100%);
-      }
+            body {
+                margin: 0;
+                min-height: 100vh;
+                font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+                color: var(--ink);
+                background:
+                    radial-gradient(
+                        circle at top left,
+                        rgba(197, 98, 45, 0.16),
+                        transparent 30%
+                    ),
+                    radial-gradient(
+                        circle at top right,
+                        rgba(39, 92, 137, 0.18),
+                        transparent 28%
+                    ),
+                    linear-gradient(180deg, #fbf7f0 0%, var(--bg) 100%);
+            }
 
-      .shell {
-        width: min(1160px, calc(100% - 32px));
-        margin: 0 auto;
-        padding: 32px 0 56px;
-      }
+            .shell {
+                width: min(1160px, calc(100% - 32px));
+                margin: 0 auto;
+                padding: 32px 0 56px;
+            }
 
-      .hero {
-        display: grid;
-        gap: 20px;
-        grid-template-columns: 1.3fr 0.7fr;
-        align-items: stretch;
-        margin-bottom: 28px;
-      }
+            .hero {
+                display: grid;
+                gap: 20px;
+                grid-template-columns: 1.3fr 0.7fr;
+                align-items: stretch;
+                margin-bottom: 28px;
+            }
 
-      .hero-card,
-      .guide-card,
-      .card {
-        background: var(--panel);
-        border: 1px solid var(--panel-border);
-        border-radius: 28px;
-        box-shadow: var(--shadow);
-        backdrop-filter: blur(10px);
-      }
+            .hero-card,
+            .guide-card,
+            .card {
+                background: var(--panel);
+                border: 1px solid var(--panel-border);
+                border-radius: 28px;
+                box-shadow: var(--shadow);
+                backdrop-filter: blur(10px);
+            }
 
-      .hero-card {
-        padding: 32px;
-      }
+            .hero-card {
+                padding: 32px;
+            }
 
-      .eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        border-radius: 999px;
-        background: rgba(197, 98, 45, 0.12);
-        color: var(--accent-dark);
-        font-size: 0.9rem;
-        font-weight: 600;
-      }
+            .eyebrow {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                border-radius: 999px;
+                background: rgba(197, 98, 45, 0.12);
+                color: var(--accent-dark);
+                font-size: 0.9rem;
+                font-weight: 600;
+            }
 
-      h1 {
-        margin: 18px 0 12px;
-        font-size: clamp(2.3rem, 4vw, 4rem);
-        line-height: 0.98;
-        letter-spacing: -0.03em;
-      }
+            h1 {
+                margin: 18px 0 12px;
+                font-size: clamp(2.3rem, 4vw, 4rem);
+                line-height: 0.98;
+                letter-spacing: -0.03em;
+            }
 
-      .lead {
-        max-width: 58ch;
-        margin: 0;
-        color: var(--muted);
-        font-size: 1.05rem;
-        line-height: 1.7;
-      }
+            .lead {
+                max-width: 58ch;
+                margin: 0;
+                color: var(--muted);
+                font-size: 1.05rem;
+                line-height: 1.7;
+            }
 
-      .hero-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-top: 22px;
-      }
+            .hero-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 12px;
+                margin-top: 22px;
+            }
 
-      .button,
-      button {
-        appearance: none;
-        border: 0;
-        cursor: pointer;
-        text-decoration: none;
-        display: inline-flex;
-        justify-content: center;
-        align-items: center;
-        gap: 8px;
-        padding: 12px 16px;
-        border-radius: 14px;
-        font-size: 0.96rem;
-        font-weight: 700;
-        transition:
-          transform 0.18s ease,
-          opacity 0.18s ease,
-          box-shadow 0.18s ease;
-      }
+            .button,
+            button {
+                appearance: none;
+                border: 0;
+                cursor: pointer;
+                text-decoration: none;
+                display: inline-flex;
+                justify-content: center;
+                align-items: center;
+                gap: 8px;
+                padding: 12px 16px;
+                border-radius: 14px;
+                font-size: 0.96rem;
+                font-weight: 700;
+                transition:
+                    transform 0.18s ease,
+                    opacity 0.18s ease,
+                    box-shadow 0.18s ease;
+            }
 
-      .button:hover,
-      button:hover {
-        transform: translateY(-1px);
-      }
+            .button:hover,
+            button:hover {
+                transform: translateY(-1px);
+            }
 
-      .button.primary,
-      button.primary {
-        background: var(--accent);
-        color: #fff7f1;
-        box-shadow: 0 12px 24px rgba(197, 98, 45, 0.24);
-      }
+            .button.primary,
+            button.primary {
+                background: var(--accent);
+                color: #fff7f1;
+                box-shadow: 0 12px 24px rgba(197, 98, 45, 0.24);
+            }
 
-      .button.secondary,
-      button.secondary {
-        background: rgba(34, 23, 15, 0.06);
-        color: var(--ink);
-      }
+            .button.secondary,
+            button.secondary {
+                background: rgba(34, 23, 15, 0.06);
+                color: var(--ink);
+            }
 
-      .guide-card {
-        padding: 26px;
-        display: grid;
-        gap: 16px;
-      }
+            .guide-card {
+                padding: 26px;
+                display: grid;
+                gap: 16px;
+            }
 
-      .guide-card h2,
-      .section-title {
-        margin: 0;
-        font-size: 1.15rem;
-      }
+            .guide-card h2,
+            .section-title {
+                margin: 0;
+                font-size: 1.15rem;
+            }
 
-      .guide-steps {
-        margin: 0;
-        padding-left: 18px;
-        color: var(--muted);
-        line-height: 1.7;
-      }
+            .guide-steps {
+                margin: 0;
+                padding-left: 18px;
+                color: var(--muted);
+                line-height: 1.7;
+            }
 
-      .guide-note {
-        padding: 14px 16px;
-        border-radius: 18px;
-        background: rgba(30, 122, 69, 0.09);
-        color: var(--success);
-        font-size: 0.93rem;
-        line-height: 1.6;
-      }
+            .guide-note {
+                padding: 14px 16px;
+                border-radius: 18px;
+                background: rgba(30, 122, 69, 0.09);
+                color: var(--success);
+                font-size: 0.93rem;
+                line-height: 1.6;
+            }
 
-      .section-head {
-        display: flex;
-        justify-content: space-between;
-        gap: 16px;
-        align-items: flex-end;
-        margin: 24px 0 16px;
-      }
+            .section-head {
+                display: flex;
+                justify-content: space-between;
+                gap: 16px;
+                align-items: flex-end;
+                margin: 24px 0 16px;
+            }
 
-      .section-copy {
-        margin: 6px 0 0;
-        color: var(--muted);
-        line-height: 1.6;
-      }
+            .section-copy {
+                margin: 6px 0 0;
+                color: var(--muted);
+                line-height: 1.6;
+            }
 
-      .cards {
-        display: grid;
-        gap: 18px;
-        grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
-      }
+            .cards {
+                display: grid;
+                gap: 18px;
+                grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+            }
 
-      .card {
-        display: grid;
-        grid-template-rows: auto auto 1fr auto;
-        gap: 14px;
-        padding: 22px;
-      }
+            .card {
+                display: grid;
+                grid-template-rows: auto auto 1fr auto;
+                gap: 14px;
+                padding: 22px;
+            }
 
-      .card-top {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        align-items: flex-start;
-      }
+            .card-top {
+                display: flex;
+                justify-content: space-between;
+                gap: 12px;
+                align-items: flex-start;
+            }
 
-      .card h3 {
-        margin: 0 0 6px;
-        font-size: 1.2rem;
-      }
+            .card h3 {
+                margin: 0 0 6px;
+                font-size: 1.2rem;
+            }
 
-      .badge {
-        padding: 8px 10px;
-        border-radius: 999px;
-        background: rgba(34, 23, 15, 0.06);
-        color: var(--muted);
-        font-size: 0.78rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
+            .badge {
+                padding: 8px 10px;
+                border-radius: 999px;
+                background: rgba(34, 23, 15, 0.06);
+                color: var(--muted);
+                font-size: 0.78rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
 
-      .card p {
-        margin: 0;
-        color: var(--muted);
-        line-height: 1.65;
-      }
+            .card p {
+                margin: 0;
+                color: var(--muted);
+                line-height: 1.65;
+            }
 
-      .meta {
-        display: grid;
-        gap: 8px;
-        padding: 14px;
-        border-radius: 18px;
-        background: rgba(34, 23, 15, 0.04);
-        font-size: 0.92rem;
-      }
+            .meta {
+                display: grid;
+                gap: 8px;
+                padding: 14px;
+                border-radius: 18px;
+                background: rgba(34, 23, 15, 0.04);
+                font-size: 0.92rem;
+            }
 
-      .meta strong {
-        color: var(--ink);
-      }
+            .meta strong {
+                color: var(--ink);
+            }
 
-      .qr-block {
-        display: grid;
-        grid-template-columns: 120px 1fr;
-        gap: 14px;
-        align-items: center;
-      }
+            .qr-block {
+                display: grid;
+                grid-template-columns: 120px 1fr;
+                gap: 14px;
+                align-items: center;
+            }
 
-      .qr-frame {
-        width: 120px;
-        height: 120px;
-        border-radius: 20px;
-        background: white;
-        border: 1px solid rgba(34, 23, 15, 0.08);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        overflow: hidden;
-      }
+            .qr-frame {
+                width: 120px;
+                height: 120px;
+                border-radius: 20px;
+                background: white;
+                border: 1px solid rgba(34, 23, 15, 0.08);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+            }
 
-      .qr-frame img {
-        width: 100%;
-        height: 100%;
-        object-fit: contain;
-      }
+            .qr-frame img {
+                width: 100%;
+                height: 100%;
+                object-fit: contain;
+            }
 
-      .qr-missing {
-        padding: 12px;
-        text-align: center;
-        color: var(--muted);
-        font-size: 0.82rem;
-        line-height: 1.5;
-      }
+            .qr-missing {
+                padding: 12px;
+                text-align: center;
+                color: var(--muted);
+                font-size: 0.82rem;
+                line-height: 1.5;
+            }
 
-      .card-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-      }
+            .card-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 10px;
+            }
 
-      .empty-state,
-      .banner {
-        padding: 18px 20px;
-        border-radius: 20px;
-        border: 1px solid rgba(34, 23, 15, 0.08);
-        background: rgba(255, 255, 255, 0.82);
-        color: var(--muted);
-        line-height: 1.65;
-      }
+            .empty-state,
+            .banner {
+                padding: 18px 20px;
+                border-radius: 20px;
+                border: 1px solid rgba(34, 23, 15, 0.08);
+                background: rgba(255, 255, 255, 0.82);
+                color: var(--muted);
+                line-height: 1.65;
+            }
 
-      .banner {
-        margin-top: 22px;
-      }
+            .banner {
+                margin-top: 22px;
+            }
 
-      code {
-        padding: 2px 6px;
-        border-radius: 8px;
-        background: rgba(34, 23, 15, 0.06);
-        font-family: "Consolas", "Courier New", monospace;
-        font-size: 0.9em;
-      }
+            code {
+                padding: 2px 6px;
+                border-radius: 8px;
+                background: rgba(34, 23, 15, 0.06);
+                font-family: "Consolas", "Courier New", monospace;
+                font-size: 0.9em;
+            }
 
-      @media (max-width: 900px) {
-        .hero {
-          grid-template-columns: 1fr;
-        }
-      }
+            @media (max-width: 900px) {
+                .hero {
+                    grid-template-columns: 1fr;
+                }
+            }
 
-      @media (max-width: 640px) {
-        .shell {
-          width: min(100% - 20px, 1160px);
-          padding-top: 20px;
-        }
+            @media (max-width: 640px) {
+                .shell {
+                    width: min(100% - 20px, 1160px);
+                    padding-top: 20px;
+                }
 
-        .hero-card,
-        .guide-card,
-        .card {
-          border-radius: 22px;
-        }
+                .hero-card,
+                .guide-card,
+                .card {
+                    border-radius: 22px;
+                }
 
-        .card {
-          padding: 18px;
-        }
+                .card {
+                    padding: 18px;
+                }
 
-        .section-head {
-          align-items: stretch;
-          flex-direction: column;
-        }
+                .section-head {
+                    align-items: stretch;
+                    flex-direction: column;
+                }
 
-        .qr-block {
-          grid-template-columns: 1fr;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <main class="shell">
-      <section class="hero">
-        <article class="hero-card">
-          <div class="eyebrow">GitHub Pages Ready</div>
-          <h1>QR membuka halaman AR, marker memunculkan objek 3D.</h1>
-          <p class="lead">
-            Gunakan proyek ini sebagai launcher experience AR. QR hanya berisi
-            URL ke halaman <code>ar.html?experience=...</code>, lalu halaman AR
-            membaca konfigurasi marker, model, audio, dan interaksi dari file
-            JSON supaya mudah diperluas.
-          </p>
-          <div class="hero-actions">
-            <a class="button primary" href="ar.html?experience=demo-hiro"
-              >Coba demo Hiro</a
+                .qr-block {
+                    grid-template-columns: 1fr;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <main class="shell">
+            <section class="hero">
+                <article class="hero-card">
+                    <div class="eyebrow">GitHub Pages Ready</div>
+                    <h1>QR membuka halaman AR, marker memunculkan objek 3D.</h1>
+                    <p class="lead">
+                        Gunakan proyek ini sebagai launcher experience AR. QR
+                        hanya berisi URL ke halaman
+                        <code>ar.html?experience=...</code>, lalu halaman AR
+                        membaca konfigurasi marker, model, audio, dan interaksi
+                        dari file JSON supaya mudah diperluas.
+                    </p>
+                    <div class="hero-actions">
+                        <a
+                            class="button primary"
+                            href="ar.html?experience=demo-hiro"
+                            >Coba demo Hiro</a
+                        >
+                        <a class="button secondary" href="#experience-list"
+                            >Lihat daftar experience</a
+                        >
+                        <a class="button secondary" href="#marker-section"
+                            >Unduh marker AR</a
+                        >
+                    </div>
+                </article>
+
+                <aside class="guide-card">
+                    <h2>Alur pemakaian</h2>
+                    <ol class="guide-steps">
+                        <li>
+                            <strong>Unduh marker</strong> di bagian bawah
+                            halaman ini, cetak atau tampilkan di layar lain.
+                        </li>
+                        <li>
+                            <strong>Scan QR</strong> dari perangkat mobile —
+                            browser membuka halaman AR.
+                        </li>
+                        <li>
+                            <strong>Izinkan kamera</strong>, tekan Mulai AR,
+                            lalu arahkan ke marker yang sudah disiapkan.
+                        </li>
+                        <li>
+                            Objek 3D muncul. <strong>Cubit</strong> untuk skala,
+                            <strong>geser</strong> untuk putar,
+                            <strong>ketuk 2x</strong> untuk reset.
+                        </li>
+                    </ol>
+                    <div class="guide-note">
+                        💡 Cetak QR dan marker pada satu kartu/poster agar user
+                        cukup membuka QR sekali lalu langsung arahkan kamera ke
+                        marker di bawahnya.
+                    </div>
+                </aside>
+            </section>
+
+            <section class="section-head">
+                <div>
+                    <h2 class="section-title">Daftar Experience</h2>
+                    <p class="section-copy">
+                        Semua item di bawah dibaca dari
+                        <code>public/data/experiences.json</code>. Tambah entry
+                        baru untuk menambah QR, model, audio, dan marker.
+                    </p>
+                </div>
+            </section>
+
+            <section
+                id="experience-list"
+                class="cards"
+                aria-live="polite"
+            ></section>
+
+            <!-- Marker Section -->
+            <section
+                id="marker-section"
+                class="section-head"
+                style="margin-top: 36px"
             >
-            <a class="button secondary" href="#experience-list"
-              >Lihat daftar experience</a
-            >
-          </div>
-        </article>
+                <div>
+                    <h2 class="section-title">Marker AR</h2>
+                    <p class="section-copy">
+                        Cetak atau tampilkan marker di bawah ini di layar lain.
+                        Arahkan kamera ke marker setelah AR aktif. Marker
+                        <strong>Hiro</strong> digunakan untuk experience
+                        demo-hiro, marker <strong>Kanji</strong> untuk
+                        demo-kanji.
+                    </p>
+                </div>
+            </section>
 
-        <aside class="guide-card">
-          <h2>Alur pemakaian</h2>
-          <ol class="guide-steps">
-            <li>Scan QR dari perangkat mobile.</li>
-            <li>Browser membuka URL experience dari repo GitHub Pages Anda.</li>
-            <li>Izinkan kamera lalu arahkan ke marker yang sesuai.</li>
-            <li>Objek 3D muncul di atas marker, audio dan kontrol aktif.</li>
-          </ol>
-          <div class="guide-note">
-            Untuk hasil tracking yang stabil, gunakan QR sebagai pembuka halaman
-            dan cetak marker AR pada kartu/poster yang sama.
-          </div>
-        </aside>
-      </section>
+            <section class="cards" style="margin-bottom: 8px">
+                <article class="card">
+                    <div class="card-top">
+                        <div>
+                            <h3>Marker Hiro</h3>
+                            <p>
+                                Digunakan oleh experience
+                                <code>demo-hiro</code>. Cetak pada kertas A4
+                                atau tampilkan di monitor.
+                            </p>
+                        </div>
+                        <span class="badge">preset:hiro</span>
+                    </div>
+                    <div
+                        style="
+                            display: flex;
+                            justify-content: center;
+                            padding: 8px 0;
+                        "
+                    >
+                        <div
+                            class="qr-frame"
+                            style="
+                                width: 180px;
+                                height: 180px;
+                                border-radius: 16px;
+                            "
+                        >
+                            <img
+                                src="https://raw.githack.com/AR-js-org/AR.js/3.4.5/data/images/hiro.png"
+                                alt="Marker Hiro"
+                                style="
+                                    width: 100%;
+                                    height: 100%;
+                                    object-fit: contain;
+                                "
+                                onerror="
+                                    this.parentElement.innerHTML =
+                                        '<div class=\'qr-missing\'>Gambar marker tidak dapat dimuat.<br/>Unduh dari AR.js docs.</div>'
+                                "
+                            />
+                        </div>
+                    </div>
+                    <div class="card-actions">
+                        <a
+                            class="button primary"
+                            href="https://raw.githack.com/AR-js-org/AR.js/3.4.5/data/images/hiro.png"
+                            target="_blank"
+                            rel="noopener"
+                            >Unduh Marker Hiro</a
+                        >
+                        <a
+                            class="button secondary"
+                            href="ar.html?experience=demo-hiro"
+                            >Buka AR Hiro</a
+                        >
+                    </div>
+                </article>
 
-      <section class="section-head">
-        <div>
-          <h2 class="section-title">Daftar Experience</h2>
-          <p class="section-copy">
-            Semua item di bawah dibaca dari
-            <code>public/data/experiences.json</code>. Tambah entry baru untuk
-            menambah QR, model, audio, dan marker.
-          </p>
-        </div>
-      </section>
+                <article class="card">
+                    <div class="card-top">
+                        <div>
+                            <h3>Marker Kanji</h3>
+                            <p>
+                                Digunakan oleh experience
+                                <code>demo-kanji</code>. Model akan berputar
+                                otomatis saat marker terdeteksi.
+                            </p>
+                        </div>
+                        <span class="badge">preset:kanji</span>
+                    </div>
+                    <div
+                        style="
+                            display: flex;
+                            justify-content: center;
+                            padding: 8px 0;
+                        "
+                    >
+                        <div
+                            class="qr-frame"
+                            style="
+                                width: 180px;
+                                height: 180px;
+                                border-radius: 16px;
+                            "
+                        >
+                            <img
+                                src="https://raw.githack.com/AR-js-org/AR.js/3.4.5/data/images/kanji.png"
+                                alt="Marker Kanji"
+                                style="
+                                    width: 100%;
+                                    height: 100%;
+                                    object-fit: contain;
+                                "
+                                onerror="
+                                    this.parentElement.innerHTML =
+                                        '<div class=\'qr-missing\'>Gambar marker tidak dapat dimuat.<br/>Unduh dari AR.js docs.</div>'
+                                "
+                            />
+                        </div>
+                    </div>
+                    <div class="card-actions">
+                        <a
+                            class="button primary"
+                            href="https://raw.githack.com/AR-js-org/AR.js/3.4.5/data/images/kanji.png"
+                            target="_blank"
+                            rel="noopener"
+                            >Unduh Marker Kanji</a
+                        >
+                        <a
+                            class="button secondary"
+                            href="ar.html?experience=demo-kanji"
+                            >Buka AR Kanji</a
+                        >
+                    </div>
+                </article>
+            </section>
 
-      <section id="experience-list" class="cards" aria-live="polite"></section>
+            <section class="banner">
+                <strong>Deploy ke GitHub Pages:</strong> Push ke branch
+                <code>main</code> — GitHub Actions otomatis generate QR dan
+                deploy. Jika mengganti nama repo atau username, update
+                <code>baseUrl</code> di
+                <code>public/data/experiences.json</code>
+                lalu push ulang agar QR mengarah ke URL yang benar.
+            </section>
+        </main>
 
-      <section class="banner">
-        Setelah mengganti nama repo atau username GitHub, jalankan kembali
-        <code>npm run generate-qr</code> dengan variabel
-        <code>PUBLIC_BASE_URL</code> agar gambar QR mengarah ke URL production
-        yang benar.
-      </section>
-    </main>
-
-    <script src="js/landing.js"></script>
-  </body>
+        <script src="js/landing.js"></script>
+    </body>
 </html>

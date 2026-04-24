@@ -1,3 +1,11 @@
+/* ══════════════════════════════════════════════════════════════════════
+   ar-experience.js  –  AR Experience core logic
+   Robust, mobile-friendly, GitHub Pages deployment ready
+   ES2020 – no classes, no TypeScript
+   ══════════════════════════════════════════════════════════════════════ */
+"use strict";
+
+// ─── STATE ─────────────────────────────────────────────────────────────────
 const state = {
   experience: null,
   scene: null,
@@ -12,413 +20,564 @@ const state = {
   userStarted: false,
   speechActive: false,
   cameraReady: false,
-  animationLoopStarted: false,
+  rafId: null,
+  touch: { lastDist: null, lastX: null, lastY: null },
 };
 
+// ─── TINY HELPERS ───────────────────────────────────────────────────────────
+function qs(sel) {
+  return document.querySelector(sel);
+}
+
+function clamp(v, lo, hi) {
+  return Math.min(hi, Math.max(lo, v));
+}
+
+function parseScaleX(s) {
+  const n = Number((s || "1 1 1").split(/\s+/)[0]);
+  return isNaN(n) || n === 0 ? 1 : n;
+}
+
+function parseRotY(s) {
+  const parts = (s || "0 0 0").split(/\s+/).map(Number);
+  return parts.length >= 2 ? parts[1] || 0 : 0;
+}
+
+// ─── EXPERIENCE CONFIG ──────────────────────────────────────────────────────
 function getExperienceId() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("experience") || "demo-hiro";
+  return (
+    new URLSearchParams(window.location.search).get("experience") || "demo-hiro"
+  );
 }
 
-async function fetchExperiences() {
-  const response = await fetch("data/experiences.json", { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`Failed to load experiences.json (${response.status})`);
+async function fetchExperience() {
+  const res = await fetch("data/experiences.json", { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`Gagal memuat experiences.json (HTTP ${res.status})`);
   }
-
-  return response.json();
+  const data = await res.json();
+  const id = getExperienceId();
+  const exp = (data.experiences || []).find((e) => e.id === id);
+  if (!exp) {
+    throw new Error(`Experience "${id}" tidak ditemukan dalam data.`);
+  }
+  return exp;
 }
 
-function setStatus(message, tone = "") {
-  const statusLine = document.getElementById("status-line");
-  statusLine.textContent = message;
-  statusLine.className = `status-line ${tone}`.trim();
+// ─── UI / STATUS ────────────────────────────────────────────────────────────
+function setStatus(msg, tone) {
+  if (tone === undefined) tone = "";
+  const pill = qs("#status-line");
+  if (!pill) return;
+  pill.className = ["status-pill", tone].filter(Boolean).join(" ");
+  const textEl = pill.querySelector(".status-text");
+  if (textEl) textEl.textContent = msg;
 }
 
-function setIntroCopy(experience) {
-  document.title = `${experience.title} | AR Experience`;
-  document.getElementById("experience-title").textContent = experience.title;
-  document.getElementById("experience-description").textContent =
-    experience.description || "Tidak ada deskripsi.";
-  document.getElementById("boot-text").textContent =
-    experience.bootText ||
-    "Pastikan marker yang sesuai sudah siap di depan kamera sebelum memulai.";
+function setPageCopy(exp) {
+  document.title = exp.title + " | AR";
+  const bootTitle = qs("#boot-title");
+  if (bootTitle) bootTitle.textContent = exp.title;
+  const expTitle = qs("#experience-title");
+  if (expTitle) expTitle.textContent = exp.title;
+  const expDesc = qs("#experience-description");
+  if (expDesc) expDesc.textContent = exp.description || "";
+  const bootText = qs("#boot-text");
+  if (bootText)
+    bootText.textContent = exp.bootText || "Tekan Mulai AR untuk memulai.";
 }
 
-function getCameraErrorMessage(error) {
+function showLoading(msg) {
+  const overlay = qs("#loading-overlay");
+  if (overlay) overlay.classList.remove("hidden");
+  const text = qs("#loading-text");
+  if (text) text.textContent = msg || "Memuat…";
+}
+
+function hideLoading() {
+  const overlay = qs("#loading-overlay");
+  if (overlay) overlay.classList.add("hidden");
+}
+
+function showBoot() {
+  const overlay = qs("#boot-overlay");
+  if (overlay) overlay.classList.remove("hidden");
+}
+
+function hideBoot() {
+  const overlay = qs("#boot-overlay");
+  if (overlay) overlay.classList.add("hidden");
+}
+
+function getCameraError(err) {
   if (!window.isSecureContext && window.location.hostname !== "localhost") {
-    return "Kamera hanya bisa diakses lewat HTTPS atau localhost. Buka dari GitHub Pages, localhost, atau tunnel HTTPS.";
+    return "Halaman harus dibuka melalui HTTPS atau localhost. Buka melalui GitHub Pages atau server HTTPS.";
   }
-
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    return "Browser ini tidak menyediakan API kamera yang dibutuhkan AR.";
+  if (!navigator.mediaDevices) {
+    return "Browser ini tidak mendukung API kamera. Gunakan Chrome atau Safari versi terbaru.";
   }
-
-  switch (error?.name) {
+  switch (err && err.name) {
     case "NotAllowedError":
     case "PermissionDeniedError":
-      return "Izin kamera ditolak. Buka pengaturan browser lalu izinkan kamera untuk situs ini.";
+      return "Izin kamera ditolak. Buka pengaturan browser dan izinkan akses kamera untuk situs ini.";
     case "NotFoundError":
     case "DevicesNotFoundError":
-      return "Tidak ada kamera yang tersedia di perangkat ini.";
+      return "Tidak ada kamera yang tersedia pada perangkat ini.";
     case "NotReadableError":
     case "TrackStartError":
-      return "Kamera sedang dipakai aplikasi lain atau gagal dibuka.";
+      return "Kamera sedang dipakai aplikasi lain atau gagal diakses. Tutup aplikasi lain lalu coba lagi.";
     case "OverconstrainedError":
-    case "ConstraintNotSatisfiedError":
-      return "Konfigurasi kamera tidak didukung perangkat ini.";
+      return "Konfigurasi kamera tidak dapat dipenuhi oleh perangkat ini.";
     default:
-      return error?.message || "Gagal meminta akses kamera.";
+      return (
+        (err && err.message) ||
+        "Gagal memulai AR. Pastikan kamera tersedia dan izin diberikan."
+      );
   }
 }
 
-async function requestCameraAccess() {
-  if (!window.isSecureContext && window.location.hostname !== "localhost") {
-    throw new Error(
-      "Halaman ini belum berada di konteks aman. Gunakan HTTPS atau localhost agar prompt kamera bisa muncul.",
-    );
-  }
-
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error(
-      "Browser ini tidak mendukung getUserMedia, jadi kamera AR tidak bisa dijalankan.",
-    );
-  }
-}
-
-function releaseCameraAccess() {
-  const sceneVideo = document.querySelector("#scene-host video");
-  if (sceneVideo && sceneVideo.srcObject) {
-    sceneVideo.srcObject.getTracks().forEach((track) => track.stop());
-    sceneVideo.srcObject = null;
-  }
-
-  state.cameraReady = false;
-}
-
-function createSceneElement() {
-  const scene = document.createElement("a-scene");
-  scene.setAttribute("embedded", "");
-  scene.setAttribute("renderer", "antialias: true; alpha: true");
-  scene.setAttribute("vr-mode-ui", "enabled: false");
-  scene.setAttribute("device-orientation-permission-ui", "enabled: false");
-  scene.setAttribute(
-    "arjs",
-    "sourceType: webcam; videoTexture: false; debugUIEnabled: false;",
-  );
-
-  const assets = document.createElement("a-assets");
-  assets.setAttribute("id", "experience-assets");
-  scene.appendChild(assets);
-
-  const camera = document.createElement("a-entity");
-  camera.setAttribute("camera", "");
-  scene.appendChild(camera);
-
-  scene.addEventListener("camera-init", () => {
-    state.cameraReady = true;
-    setStatus("Feed kamera aktif. Arahkan perangkat ke marker.", "success");
-  });
-
-  scene.addEventListener("camera-error", (event) => {
-    const errorMessage = getCameraErrorMessage(event?.detail || event);
-    setStatus(errorMessage, "error");
-    document.getElementById("boot-text").textContent = errorMessage;
-  });
-
-  return scene;
-}
-
-async function ensureSceneStarted() {
-  if (state.scene) {
-    return state.scene;
-  }
-
-  let host = document.getElementById("scene-host");
+// ─── SCENE BUILDING ─────────────────────────────────────────────────────────
+function buildScene() {
+  let host = qs("#scene-host");
   if (!host) {
     host = document.createElement("div");
     host.id = "scene-host";
     document.body.prepend(host);
   }
 
-  const scene = createSceneElement();
-  host.replaceChildren();
-  host.appendChild(scene);
-  state.scene = scene;
+  const scene = document.createElement("a-scene");
+  scene.setAttribute("embedded", "");
+  scene.setAttribute(
+    "renderer",
+    "antialias: true; alpha: true; logarithmicDepthBuffer: true;",
+  );
+  scene.setAttribute("vr-mode-ui", "enabled: false");
+  scene.setAttribute("device-orientation-permission-ui", "enabled: false");
+  scene.setAttribute(
+    "arjs",
+    "sourceType: webcam; videoTexture: false; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;",
+  );
 
-  await new Promise((resolve) => {
-    if (scene.hasLoaded) {
-      resolve();
-      return;
-    }
+  const assets = document.createElement("a-assets");
+  assets.setAttribute("timeout", "10000");
+  scene.appendChild(assets);
 
-    scene.addEventListener("loaded", () => resolve(), { once: true });
+  const camera = document.createElement("a-entity");
+  camera.setAttribute("camera", "");
+  scene.appendChild(camera);
+
+  scene.addEventListener("camera-error", function (evt) {
+    const msg = getCameraError((evt && evt.detail) || evt);
+    setStatus(msg, "error");
   });
 
+  host.replaceChildren(scene);
+  state.scene = scene;
   return scene;
 }
 
-function createMarkerAttributes(markerConfig) {
-  if (markerConfig.preset) {
-    return { preset: markerConfig.preset };
-  }
+function waitForSceneLoad(scene) {
+  return new Promise(function (resolve) {
+    if (scene.hasLoaded) return resolve();
+    scene.addEventListener("loaded", resolve, { once: true });
+  });
+}
 
-  if (markerConfig.type === "barcode") {
-    return {
-      type: "barcode",
-      value: String(markerConfig.value),
-    };
-  }
+function waitForCameraVideo(timeoutMs) {
+  if (timeoutMs === undefined) timeoutMs = 15000;
+  return new Promise(function (resolve, reject) {
+    const deadline = Date.now() + timeoutMs;
+    let done = false;
+    let listenerAttached = false;
 
-  if (markerConfig.type === "pattern") {
-    return {
-      type: "pattern",
-      url: markerConfig.patternUrl,
-    };
-  }
+    function finish(v) {
+      if (done) return;
+      done = true;
+      state.cameraReady = true;
+      resolve(v);
+    }
 
+    function poll() {
+      if (done) return;
+
+      if (Date.now() >= deadline) {
+        if (!done) {
+          done = true;
+          reject(new Error("Timeout menunggu video kamera"));
+        }
+        return;
+      }
+
+      const v = document.querySelector("video");
+      if (v) {
+        if (v.readyState >= 2 && !v.paused) {
+          return finish(v);
+        }
+
+        if (!listenerAttached) {
+          listenerAttached = true;
+          v.addEventListener(
+            "playing",
+            function () {
+              finish(v);
+            },
+            { once: true },
+          );
+          if (v.readyState >= 3) {
+            v.play().catch(function () {});
+          } else {
+            v.addEventListener(
+              "canplay",
+              function () {
+                v.play().catch(function () {});
+              },
+              { once: true },
+            );
+          }
+        }
+      }
+
+      setTimeout(poll, 300);
+    }
+
+    poll();
+  });
+}
+
+// ─── MARKER & MODEL ─────────────────────────────────────────────────────────
+function getMarkerAttrs(cfg) {
+  if (cfg.preset) {
+    return { preset: cfg.preset };
+  }
+  if (cfg.type === "barcode") {
+    return { type: "barcode", value: String(cfg.value) };
+  }
+  if (cfg.type === "pattern") {
+    return { type: "pattern", url: cfg.patternUrl };
+  }
   throw new Error(
     "Marker config tidak valid. Gunakan preset, barcode, atau pattern.",
   );
 }
 
-function createModelEntity(experience) {
-  const model = experience.model || {};
-  const entity = document.createElement("a-entity");
-  const directModelUrl = model.src || "";
-
-  if (!directModelUrl) {
-    throw new Error("Model source belum diisi di experiences.json.");
-  }
-
-  entity.setAttribute("id", "experience-model");
-  entity.setAttribute("gltf-model", `url(${directModelUrl})`);
-  entity.setAttribute("position", model.position || "0 0.5 0");
-  entity.setAttribute("rotation", model.rotation || "0 0 0");
-  entity.setAttribute("scale", model.scale || "1 1 1");
-
-  if (model.animationMixer !== false) {
-    entity.setAttribute("animation-mixer", "");
-  }
-
-  entity.addEventListener("model-loaded", () => {
-    setStatus("Model 3D berhasil dimuat. Arahkan kamera ke marker.", "success");
-  });
-
-  entity.addEventListener("model-error", () => {
-    setStatus("Model 3D gagal dimuat. Periksa path file .glb/.gltf.", "error");
-  });
-
-  return entity;
-}
-
-function parseScale(scaleString) {
-  const parts = (scaleString || "1 1 1")
-    .split(/\s+/)
-    .map((part) => Number(part));
-  const safe = parts.length === 3 ? parts : [1, 1, 1];
-  return safe[0] || 1;
-}
-
-function parseRotationY(rotationString) {
-  const parts = (rotationString || "0 0 0")
-    .split(/\s+/)
-    .map((part) => Number(part));
-  return parts.length >= 2 ? parts[1] || 0 : 0;
-}
-
-function applyModelTransform() {
-  if (!state.modelElement || !state.experience) {
-    return;
-  }
-
-  const model = state.experience.model || {};
-  const baseRotationX = (model.rotation || "0 0 0").split(/\s+/)[0] || "0";
-  const baseRotationZ = (model.rotation || "0 0 0").split(/\s+/)[2] || "0";
-  const scaleString = `${state.currentScale} ${state.currentScale} ${state.currentScale}`;
-  const rotationString = `${baseRotationX} ${state.currentRotationY} ${baseRotationZ}`;
-
-  state.modelElement.setAttribute("scale", scaleString);
-  state.modelElement.setAttribute("rotation", rotationString);
-}
-
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function resetModelTransform() {
-  state.currentScale = state.baseScale;
-  state.currentRotationY = state.baseRotationY;
-  applyModelTransform();
-}
-
-function setupAudio(experience) {
-  const audioConfig = experience.audio || {};
-
-  if (audioConfig.src) {
-    const audio = new Audio(audioConfig.src);
-    audio.preload = "auto";
-    audio.loop = Boolean(audioConfig.loop);
-    audio.volume =
-      typeof audioConfig.volume === "number" ? audioConfig.volume : 0.9;
-    state.audioElement = audio;
-  }
-}
-
-function stopSpeech() {
-  if ("speechSynthesis" in window) {
-    window.speechSynthesis.cancel();
-  }
-  state.speechActive = false;
-}
-
-function playConfiguredAudio() {
-  const audioConfig = state.experience?.audio || {};
-
-  if (state.audioElement) {
-    state.audioElement
-      .play()
-      .then(() => {
-        setStatus("Audio diputar.", "success");
-      })
-      .catch((error) => {
-        setStatus(`Audio gagal diputar: ${error.message}`, "error");
-      });
-    return;
-  }
-
-  if (audioConfig.speechText && "speechSynthesis" in window) {
-    stopSpeech();
-    const utterance = new SpeechSynthesisUtterance(audioConfig.speechText);
-    utterance.lang = audioConfig.lang || "id-ID";
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.onstart = () => {
-      state.speechActive = true;
-      setStatus("Speech synthesis aktif.", "success");
-    };
-    utterance.onend = () => {
-      state.speechActive = false;
-    };
-    utterance.onerror = () => {
-      state.speechActive = false;
-      setStatus("Speech synthesis gagal dijalankan.", "error");
-    };
-    window.speechSynthesis.speak(utterance);
-    return;
-  }
-
-  setStatus("Experience ini belum punya audio.", "error");
-}
-
-function toggleAudio() {
-  if (state.audioElement) {
-    if (!state.audioElement.paused) {
-      state.audioElement.pause();
-      setStatus("Audio dihentikan.");
-      return;
-    }
-
-    playConfiguredAudio();
-    return;
-  }
-
-  if (state.speechActive) {
-    stopSpeech();
-    setStatus("Speech synthesis dihentikan.");
-    return;
-  }
-
-  playConfiguredAudio();
-}
-
-function maybeAutoplayAudio(trigger) {
-  const audioConfig = state.experience?.audio || {};
-
-  if (!state.userStarted) {
-    return;
-  }
-
-  if (trigger === "marker" && audioConfig.autoplayOnMarker) {
-    playConfiguredAudio();
-  }
-
-  if (trigger === "start" && audioConfig.autoplayOnStart) {
-    playConfiguredAudio();
-  }
-}
-
-function buildMarkerScene(experience) {
-  const scene = state.scene;
+function buildMarkerScene(exp) {
+  if (!state.scene) return;
 
   if (state.markerElement) {
     state.markerElement.remove();
+    state.markerElement = null;
+    state.modelElement = null;
   }
 
   const marker = document.createElement("a-marker");
-  const markerAttributes = createMarkerAttributes(experience.marker || {});
-
-  Object.entries(markerAttributes).forEach(([key, value]) => {
-    marker.setAttribute(key, value);
+  const attrs = getMarkerAttrs(exp.marker || {});
+  Object.entries(attrs).forEach(function (pair) {
+    marker.setAttribute(pair[0], pair[1]);
   });
 
   marker.setAttribute("emitevents", "true");
   marker.setAttribute("smooth", "true");
-  marker.setAttribute("smooth-count", "8");
-  marker.setAttribute("smooth-tolerance", "0.01");
-  marker.setAttribute("smooth-threshold", "2");
+  marker.setAttribute("smoothCount", 10);
+  marker.setAttribute("smoothTolerance", 0.01);
+  marker.setAttribute("smoothThreshold", 2);
 
-  const modelEntity = createModelEntity(experience);
-  marker.appendChild(modelEntity);
-  scene.appendChild(marker);
+  const m = exp.model || {};
+  const entity = document.createElement("a-entity");
+  entity.setAttribute("id", "experience-model");
+  entity.setAttribute("gltf-model", "url(" + m.src + ")");
+  entity.setAttribute("position", m.position || "0 0.5 0");
+  entity.setAttribute("rotation", m.rotation || "0 0 0");
+  entity.setAttribute("scale", m.scale || "1 1 1");
 
-  state.markerElement = marker;
-  state.modelElement = modelEntity;
-  state.baseScale = parseScale(experience.model?.scale);
-  state.currentScale = state.baseScale;
-  state.baseRotationY = parseRotationY(experience.model?.rotation);
-  state.currentRotationY = state.baseRotationY;
+  if (m.animationMixer !== false) {
+    entity.setAttribute("animation-mixer", "");
+  }
 
-  marker.addEventListener("markerFound", () => {
-    state.markerVisible = true;
-    setStatus(
-      "Marker terdeteksi. Objek ditempatkan di atas marker.",
-      "success",
-    );
-    maybeAutoplayAudio("marker");
+  entity.addEventListener("model-loaded", function () {
+    setStatus("Model dimuat. Arahkan ke marker.", "success");
+  });
+  entity.addEventListener("model-error", function () {
+    setStatus("Model gagal dimuat.", "error");
   });
 
-  marker.addEventListener("markerLost", () => {
+  marker.appendChild(entity);
+  state.scene.appendChild(marker);
+
+  state.markerElement = marker;
+  state.modelElement = entity;
+  state.baseScale = parseScaleX(m.scale);
+  state.currentScale = state.baseScale;
+  state.baseRotationY = parseRotY(m.rotation);
+  state.currentRotationY = state.baseRotationY;
+
+  marker.addEventListener("markerFound", function () {
+    state.markerVisible = true;
+    setStatus("✓ Marker terdeteksi!", "success");
+    const ind = qs("#marker-indicator");
+    if (ind) ind.classList.add("found");
+    autoplayAudio("marker");
+  });
+
+  marker.addEventListener("markerLost", function () {
     state.markerVisible = false;
-    setStatus("Marker hilang dari kamera. Arahkan kembali ke marker.", "");
-    if (state.experience?.audio?.pauseOnMarkerLost && state.audioElement) {
+    setStatus("Marker hilang — arahkan kembali ke marker.", "");
+    const ind = qs("#marker-indicator");
+    if (ind) ind.classList.remove("found");
+    if (exp.audio && exp.audio.pauseOnMarkerLost && state.audioElement) {
       state.audioElement.pause();
     }
   });
 }
 
-function bindUi() {
-  window.addEventListener("pagehide", releaseCameraAccess);
-  window.addEventListener("beforeunload", releaseCameraAccess);
+// ─── TRANSFORM ──────────────────────────────────────────────────────────────
+function applyTransform() {
+  if (!state.modelElement || !state.experience) return;
+  const rot = (
+    (state.experience.model && state.experience.model.rotation) ||
+    "0 0 0"
+  ).split(/\s+/);
+  const rx = rot[0] || "0";
+  const rz = rot[2] || "0";
+  const s = state.currentScale;
+  state.modelElement.setAttribute("scale", s + " " + s + " " + s);
+  state.modelElement.setAttribute(
+    "rotation",
+    rx + " " + state.currentRotationY + " " + rz,
+  );
+}
 
-  document.getElementById("play-audio").addEventListener("click", toggleAudio);
+function resetTransform() {
+  state.currentScale = state.baseScale;
+  state.currentRotationY = state.baseRotationY;
+  applyTransform();
+}
 
-  document.getElementById("marker-help").addEventListener("click", () => {
-    const hint =
-      state.experience?.marker?.printHint ||
-      "Siapkan marker yang sesuai dan arahkan kamera ke marker tersebut.";
-    window.alert(hint);
+// ─── AUDIO ──────────────────────────────────────────────────────────────────
+function setupAudio(exp) {
+  state.audioElement = null;
+  const cfg = exp.audio || {};
+  if (cfg.src) {
+    const audio = new Audio(cfg.src);
+    audio.preload = "auto";
+    audio.loop = Boolean(cfg.loop);
+    audio.volume = typeof cfg.volume === "number" ? cfg.volume : 0.9;
+    state.audioElement = audio;
+  }
+}
+
+function playAudio() {
+  const cfg = (state.experience && state.experience.audio) || {};
+
+  if (state.audioElement) {
+    state.audioElement.currentTime = 0;
+    state.audioElement.play().catch(function (err) {
+      setStatus("Audio gagal diputar: " + err.message, "error");
+    });
+    return;
+  }
+
+  if (cfg.speechText && "speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(cfg.speechText);
+    utt.lang = cfg.lang || "id-ID";
+    utt.rate = 1;
+    utt.pitch = 1;
+    utt.onstart = function () {
+      state.speechActive = true;
+    };
+    utt.onend = function () {
+      state.speechActive = false;
+    };
+    utt.onerror = function () {
+      state.speechActive = false;
+    };
+    window.speechSynthesis.speak(utt);
+    return;
+  }
+
+  setStatus("Experience ini tidak memiliki audio.", "");
+}
+
+function toggleAudio() {
+  if (state.audioElement) {
+    if (state.audioElement.paused) {
+      state.audioElement.play().catch(function () {});
+    } else {
+      state.audioElement.pause();
+    }
+    return;
+  }
+  if (state.speechActive) {
+    window.speechSynthesis.cancel();
+    state.speechActive = false;
+    return;
+  }
+  playAudio();
+}
+
+function autoplayAudio(trigger) {
+  if (!state.userStarted) return;
+  const cfg = (state.experience && state.experience.audio) || {};
+  if (trigger === "marker" && cfg.autoplayOnMarker) playAudio();
+  if (trigger === "start" && cfg.autoplayOnStart) playAudio();
+}
+
+// ─── TOUCH GESTURES ─────────────────────────────────────────────────────────
+function touchDistance(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.hypot(dx, dy);
+}
+
+let lastTapTime = 0;
+
+function bindTouchGestures() {
+  const host = qs("#scene-host");
+  if (!host) return;
+
+  host.addEventListener(
+    "touchstart",
+    function (e) {
+      if (e.touches.length === 2) {
+        state.touch.lastDist = touchDistance(e.touches);
+      } else if (e.touches.length === 1) {
+        state.touch.lastX = e.touches[0].clientX;
+        state.touch.lastY = e.touches[0].clientY;
+        const now = Date.now();
+        if (now - lastTapTime < 300) resetTransform();
+        lastTapTime = now;
+      }
+    },
+    { passive: true },
+  );
+
+  host.addEventListener(
+    "touchmove",
+    function (e) {
+      if (!state.experience) return;
+      const ia = state.experience.interaction || {};
+      const min = Number(ia.minScale || 0.4);
+      const max = Number(ia.maxScale || 2.4);
+
+      if (e.touches.length === 2 && state.touch.lastDist !== null) {
+        const d = touchDistance(e.touches);
+        const delta = d - state.touch.lastDist;
+        state.currentScale = clamp(
+          state.currentScale + delta * 0.006,
+          min,
+          max,
+        );
+        state.touch.lastDist = d;
+        applyTransform();
+      } else if (e.touches.length === 1 && state.touch.lastX !== null) {
+        const dx = e.touches[0].clientX - state.touch.lastX;
+        state.currentRotationY += dx * 0.45;
+        state.touch.lastX = e.touches[0].clientX;
+        state.touch.lastY = e.touches[0].clientY;
+        applyTransform();
+      }
+    },
+    { passive: true },
+  );
+
+  host.addEventListener(
+    "touchend",
+    function (e) {
+      if (e.touches.length < 2) state.touch.lastDist = null;
+      if (e.touches.length < 1) {
+        state.touch.lastX = null;
+        state.touch.lastY = null;
+      }
+    },
+    { passive: true },
+  );
+}
+
+// ─── ANIMATION LOOP ─────────────────────────────────────────────────────────
+function startLoop() {
+  function step() {
+    const ia = (state.experience && state.experience.interaction) || {};
+    if (state.markerVisible && state.modelElement && ia.autoRotate) {
+      state.currentRotationY += Number(ia.autoRotateStep || 0.6);
+      applyTransform();
+    }
+    state.rafId = requestAnimationFrame(step);
+  }
+  state.rafId = requestAnimationFrame(step);
+}
+
+// ─── CLEANUP ────────────────────────────────────────────────────────────────
+function cleanup() {
+  if (state.rafId) {
+    cancelAnimationFrame(state.rafId);
+    state.rafId = null;
+  }
+  document.querySelectorAll("video").forEach(function (v) {
+    if (v.srcObject) {
+      v.srcObject.getTracks().forEach(function (t) {
+        t.stop();
+      });
+      v.srcObject = null;
+    }
   });
+  if (state.audioElement) {
+    state.audioElement.pause();
+  }
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+  state.cameraReady = false;
+}
 
-  document.querySelectorAll("[data-action]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const interaction = state.experience?.interaction || {};
-      const rotateStep = Number(interaction.rotateStep || 15);
-      const scaleStep = Number(interaction.scaleStep || 0.15);
-      const minScale = Number(interaction.minScale || 0.4);
-      const maxScale = Number(interaction.maxScale || 2.2);
+// ─── UI BINDING ─────────────────────────────────────────────────────────────
+function bindUI() {
+  // Lifecycle cleanup
+  window.addEventListener("pagehide", cleanup);
+  window.addEventListener("beforeunload", cleanup);
 
-      switch (button.dataset.action) {
+  // ── Toggle info panel ──────────────────────────────────────────────
+  const toggleBtn = qs("#toggle-panel");
+  const infoPanel = qs("#info-panel");
+  if (toggleBtn && infoPanel) {
+    toggleBtn.addEventListener("click", function () {
+      infoPanel.classList.toggle("collapsed");
+      toggleBtn.textContent = infoPanel.classList.contains("collapsed")
+        ? "+"
+        : "\u2212";
+    });
+  }
+
+  // ── Audio button ───────────────────────────────────────────────────
+  const playAudioBtn = qs("#play-audio");
+  if (playAudioBtn) {
+    playAudioBtn.addEventListener("click", function () {
+      if (state.userStarted) toggleAudio();
+    });
+  }
+
+  // ── Marker help ────────────────────────────────────────────────────
+  const markerHelpBtn = qs("#marker-help");
+  if (markerHelpBtn) {
+    markerHelpBtn.addEventListener("click", function () {
+      const hint =
+        (state.experience &&
+          state.experience.marker &&
+          state.experience.marker.printHint) ||
+        "Siapkan marker yang sesuai dan arahkan kamera ke marker tersebut.";
+      window.alert(hint);
+    });
+  }
+
+  // ── Control strip buttons ──────────────────────────────────────────
+  document.querySelectorAll("[data-action]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const ia = (state.experience && state.experience.interaction) || {};
+      const rotateStep = Number(ia.rotateStep || 15);
+      const scaleStep = Number(ia.scaleStep || 0.15);
+      const minScale = Number(ia.minScale || 0.4);
+      const maxScale = Number(ia.maxScale || 2.4);
+
+      switch (btn.dataset.action) {
         case "rotate-left":
           state.currentRotationY -= rotateStep;
           break;
@@ -440,89 +599,102 @@ function bindUi() {
           );
           break;
         case "reset":
-          resetModelTransform();
+          resetTransform();
+          return;
+        default:
           return;
       }
-
-      applyModelTransform();
+      applyTransform();
     });
   });
 
-  document.getElementById("start-ar").addEventListener("click", async () => {
-    const startButton = document.getElementById("start-ar");
-    startButton.disabled = true;
-    startButton.textContent = "Meminta kamera...";
-    setStatus("Meminta akses kamera dari browser...");
+  // ── Start AR button ────────────────────────────────────────────────
+  const startBtn = qs("#start-ar");
+  if (!startBtn) return;
+
+  startBtn.addEventListener("click", async function () {
+    startBtn.disabled = true;
+    const btnLabel = startBtn.querySelector("span:last-child");
+    if (btnLabel) btnLabel.textContent = "Memulai\u2026";
 
     try {
-      await requestCameraAccess();
-      await ensureSceneStarted();
-      state.userStarted = true;
-      buildMarkerScene(state.experience);
-      if (!state.animationLoopStarted) {
-        startAnimationLoop();
-        state.animationLoopStarted = true;
+      // Validate context + API availability
+      if (!window.isSecureContext) {
+        const e = new Error("Bukan konteks aman (non-HTTPS)");
+        e.name = "SecurityError";
+        throw e;
       }
-      document.body.classList.add("ar-started");
-      document.getElementById("boot-overlay").classList.add("hidden");
-      setStatus(
-        "Izin kamera diberikan. Menyalakan feed kamera dan menunggu marker...",
-        "success",
-      );
-      maybeAutoplayAudio("start");
-    } catch (error) {
-      const message = getCameraErrorMessage(error);
-      setStatus(message, "error");
-      document.getElementById("boot-text").textContent = message;
+      if (!navigator.mediaDevices) {
+        const e = new Error("navigator.mediaDevices tidak tersedia");
+        e.name = "NotSupportedError";
+        throw e;
+      }
+
+      showLoading("Membangun scene AR\u2026");
+      hideBoot();
+
+      const scene = buildScene();
+      await waitForSceneLoad(scene);
+
+      buildMarkerScene(state.experience);
+      setupAudio(state.experience);
+      state.userStarted = true;
+      startLoop();
+      bindTouchGestures();
+
+      // Reveal HUD
+      const hud = qs("#hud");
+      if (hud) hud.classList.remove("hidden");
+
+      setStatus("Menunggu video kamera\u2026");
+
+      try {
+        await waitForCameraVideo(15000);
+        setStatus("Kamera aktif \u2014 arahkan ke marker.", "success");
+      } catch (_) {
+        setStatus("Arahkan kamera ke marker jika tampil.", "");
+      }
+
+      hideLoading();
+      autoplayAudio("start");
+    } catch (err) {
+      hideLoading();
+      showBoot();
+      const msg = getCameraError(err);
+      setStatus(msg, "error");
+      const btxt = qs("#boot-text");
+      if (btxt) btxt.textContent = msg;
     } finally {
-      startButton.disabled = false;
-      startButton.textContent = "Mulai AR";
+      startBtn.disabled = false;
+      if (btnLabel) btnLabel.textContent = "Mulai AR";
     }
   });
 }
 
-function startAnimationLoop() {
-  function step() {
-    const interaction = state.experience?.interaction || {};
-    if (state.markerVisible && state.modelElement && interaction.autoRotate) {
-      state.currentRotationY += Number(interaction.autoRotateStep || 0.6);
-      applyModelTransform();
-    }
-
-    window.requestAnimationFrame(step);
-  }
-
-  window.requestAnimationFrame(step);
-}
-
+// ─── MAIN ENTRY POINT ───────────────────────────────────────────────────────
 async function main() {
   try {
-    bindUi();
+    bindUI();
+    setStatus("Memuat konfigurasi\u2026");
 
-    const data = await fetchExperiences();
-    const experienceId = getExperienceId();
-    const experience = (data.experiences || []).find(
-      (item) => item.id === experienceId,
-    );
+    state.experience = await fetchExperience();
+    setPageCopy(state.experience);
+    setStatus("Siap. Tekan Mulai AR.");
 
-    if (!experience) {
-      throw new Error(`Experience "${experienceId}" tidak ditemukan.`);
-    }
+    const startBtn = qs("#start-ar");
+    if (startBtn) startBtn.disabled = false;
 
-    state.experience = experience;
-    setIntroCopy(experience);
-    setupAudio(experience);
-    if (!window.isSecureContext && window.location.hostname !== "localhost") {
+    if (!window.isSecureContext) {
       setStatus(
-        "Halaman belum HTTPS/localhost, jadi kamera tidak akan terbuka.",
+        "Halaman belum HTTPS/localhost \u2014 kamera tidak dapat diakses.",
         "error",
       );
-    } else {
-      setStatus("Experience siap. Tekan Mulai AR untuk membuka prompt kamera.");
+      if (startBtn) startBtn.disabled = true;
     }
-  } catch (error) {
-    setStatus(error.message, "error");
-    document.getElementById("boot-text").textContent = error.message;
+  } catch (err) {
+    setStatus(err.message, "error");
+    const btxt = qs("#boot-text");
+    if (btxt) btxt.textContent = err.message;
   }
 }
 
