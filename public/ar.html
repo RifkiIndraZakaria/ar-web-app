@@ -76,7 +76,10 @@
                 display: flex;
                 flex-direction: column;
                 justify-content: space-between;
-                padding: 16px;
+                padding:
+                    calc(12px + env(safe-area-inset-top))
+                    12px
+                    calc(12px + env(safe-area-inset-bottom));
                 z-index: 20;
             }
 
@@ -105,6 +108,11 @@
             .panel h1 {
                 margin: 0 0 8px;
                 font-size: 1.15rem;
+            }
+
+            .panel-copy {
+                display: grid;
+                gap: 10px;
             }
 
             .panel p {
@@ -157,14 +165,15 @@
             }
 
             .control-bar {
-                display: flex;
-                justify-content: center;
+                display: grid;
+                grid-template-columns: repeat(5, minmax(0, 1fr));
                 gap: 10px;
-                flex-wrap: wrap;
+                width: min(100%, 860px);
+                margin: 0 auto;
             }
 
             .control-bar button {
-                min-width: 92px;
+                min-width: 0;
             }
 
             .boot-overlay {
@@ -219,12 +228,36 @@
             }
 
             @media (max-width: 720px) {
-                .hud {
-                    padding: 12px;
-                }
-
                 .top-bar {
                     flex-direction: column;
+                    gap: 8px;
+                }
+
+                .panel {
+                    width: 100%;
+                    padding: 14px;
+                    border-radius: 16px;
+                }
+
+                .panel h1 {
+                    font-size: 1rem;
+                    margin-bottom: 4px;
+                }
+
+                .panel p {
+                    font-size: 0.88rem;
+                    line-height: 1.45;
+                }
+
+                .status-line {
+                    margin-top: 8px;
+                    padding: 9px 10px;
+                    font-size: 0.84rem;
+                    border-radius: 12px;
+                }
+
+                body.ar-started .panel-copy p {
+                    display: none;
                 }
 
                 .top-actions,
@@ -232,10 +265,70 @@
                     width: 100%;
                 }
 
-                .control-bar button,
+                .top-actions {
+                    display: grid;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                }
+
                 .top-actions button,
-                .top-actions a {
-                    flex: 1 1 130px;
+                .top-actions a,
+                .control-bar button {
+                    min-height: 46px;
+                    padding: 10px 8px;
+                    border-radius: 12px;
+                    font-size: 0.88rem;
+                }
+
+                .control-bar {
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 8px;
+                }
+
+                .boot-overlay {
+                    padding: 16px;
+                }
+
+                .boot-card {
+                    padding: 20px;
+                    border-radius: 18px;
+                }
+
+                .boot-card h2 {
+                    font-size: 1.25rem;
+                }
+
+                .boot-card p,
+                .boot-card li {
+                    font-size: 0.92rem;
+                    line-height: 1.55;
+                }
+
+                .boot-actions {
+                    display: grid;
+                    grid-template-columns: 1fr;
+                }
+            }
+
+            @media (max-width: 420px) {
+                .hud {
+                    padding:
+                        calc(10px + env(safe-area-inset-top))
+                        10px
+                        calc(10px + env(safe-area-inset-bottom));
+                }
+
+                .panel {
+                    padding: 12px;
+                }
+
+                .top-actions button,
+                .top-actions a,
+                .control-bar button {
+                    font-size: 0.82rem;
+                }
+
+                .control-bar {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
                 }
             }
         </style>
@@ -277,9 +370,11 @@
             <div class="top-bar">
                 <div class="panel">
                     <h1 id="experience-title">Loading experience...</h1>
-                    <p id="experience-description">
-                        Mengambil konfigurasi experience dari file JSON.
-                    </p>
+                    <div class="panel-copy">
+                        <p id="experience-description">
+                            Mengambil konfigurasi experience dari file JSON.
+                        </p>
+                    </div>
                     <div id="status-line" class="status-line">
                         Menyiapkan marker, model, audio, dan kontrol.
                     </div>

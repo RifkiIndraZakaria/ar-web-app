@@ -463,6 +463,7 @@ function bindUi() {
         startAnimationLoop();
         state.animationLoopStarted = true;
       }
+      document.body.classList.add("ar-started");
       document.getElementById("boot-overlay").classList.add("hidden");
       setStatus(
         "Izin kamera diberikan. Menyalakan feed kamera dan menunggu marker...",
