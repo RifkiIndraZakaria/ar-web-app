@@ -12,7 +12,6 @@ const state = {
   userStarted: false,
   speechActive: false,
   cameraReady: false,
-  cameraStream: null,
   animationLoopStarted: false,
 };
 
@@ -85,28 +84,16 @@ async function requestCameraAccess() {
       "Browser ini tidak mendukung getUserMedia, jadi kamera AR tidak bisa dijalankan.",
     );
   }
-
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: {
-        ideal: "environment",
-      },
-    },
-    audio: false,
-  });
-
-  state.cameraStream = stream;
-  state.cameraReady = true;
-  return stream;
 }
 
 function releaseCameraAccess() {
-  if (!state.cameraStream) {
-    return;
+  const sceneVideo = document.querySelector("#scene-host video");
+  if (sceneVideo && sceneVideo.srcObject) {
+    sceneVideo.srcObject.getTracks().forEach((track) => track.stop());
+    sceneVideo.srcObject = null;
   }
 
-  state.cameraStream.getTracks().forEach((track) => track.stop());
-  state.cameraStream = null;
+  state.cameraReady = false;
 }
 
 function createSceneElement() {
@@ -115,7 +102,10 @@ function createSceneElement() {
   scene.setAttribute("renderer", "antialias: true; alpha: true");
   scene.setAttribute("vr-mode-ui", "enabled: false");
   scene.setAttribute("device-orientation-permission-ui", "enabled: false");
-  scene.setAttribute("arjs", "sourceType: webcam; debugUIEnabled: false;");
+  scene.setAttribute(
+    "arjs",
+    "sourceType: webcam; videoTexture: true; debugUIEnabled: false;",
+  );
 
   const assets = document.createElement("a-assets");
   assets.setAttribute("id", "experience-assets");
@@ -452,7 +442,6 @@ function bindUi() {
 
     try {
       await requestCameraAccess();
-      releaseCameraAccess();
       await ensureSceneStarted();
       state.userStarted = true;
       buildMarkerScene(state.experience);
