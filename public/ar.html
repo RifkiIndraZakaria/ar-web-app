@@ -88,6 +88,19 @@
                 display: none !important;
             }
 
+            /* ─── Camera Preview (tampil sebelum AR.js siap) ─────── */
+            /* z-index 0 — paling bawah, di belakang semua layer      */
+            #camera-preview {
+                position: fixed;
+                inset: 0;
+                width: 100% !important;
+                height: 100% !important;
+                object-fit: cover;
+                z-index: 0;
+                background: #000;
+                /* mirror efek selfie jika pakai kamera depan */
+            }
+
             /* ─── Scene Host ─────────────────────────────────────── */
             #scene-host {
                 position: fixed;
@@ -504,6 +517,8 @@
             }
 
             /* ─── Boot Overlay ───────────────────────────────────── */
+            /* Semi-transparan + frosted glass agar preview kamera    */
+            /* terlihat dari balik overlay sebelum AR dimulai.        */
             #boot-overlay {
                 position: fixed;
                 inset: 0;
@@ -515,10 +530,12 @@
                 background:
                     radial-gradient(
                         ellipse 70% 50% at 50% -10%,
-                        rgba(249, 115, 22, 0.22) 0%,
+                        rgba(249, 115, 22, 0.18) 0%,
                         transparent 70%
                     ),
-                    rgba(0, 0, 0, 0.94);
+                    rgba(0, 0, 0, 0.52);
+                backdrop-filter: blur(6px) saturate(1.4);
+                -webkit-backdrop-filter: blur(6px) saturate(1.4);
                 overflow-y: auto;
                 -webkit-overflow-scrolling: touch;
             }
@@ -915,6 +932,20 @@
             </div>
             <p id="loading-text">Memuat scene AR…</p>
         </div>
+
+        <!-- ══════════════════════════════════════════════════════
+         CAMERA PREVIEW  (z-index 0)
+         Video langsung dari getUserMedia, tampil saat halaman
+         dibuka — sebelum AR.js scene dibangun.
+         JS akan menyembunyikannya begitu AR.js siap.
+    ═══════════════════════════════════════════════════════ -->
+        <video
+            id="camera-preview"
+            autoplay
+            playsinline
+            muted
+            class="hidden"
+        ></video>
 
         <!-- ══════════════════════════════════════════════════════
          SCENE HOST  (z-index 1)

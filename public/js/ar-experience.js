@@ -22,6 +22,7 @@ const state = {
   cameraReady: false,
   rafId: null,
   touch: { lastDist: null, lastX: null, lastY: null },
+  previewStream: null,
 };
 
 // ─── TINY HELPERS ───────────────────────────────────────────────────────────
@@ -507,6 +508,64 @@ function startLoop() {
 }
 
 // ─── CLEANUP ────────────────────────────────────────────────────────────────
+// ─── CAMERA PREVIEW ─────────────────────────────────────────────────────────
+// Mulai preview kamera langsung dari getUserMedia ke <video id="camera-preview">
+// sebelum AR.js scene dibangun. Membuat layar tidak hitam saat halaman terbuka.
+async function startCameraPreview() {
+  const preview = qs("#camera-preview");
+  if (!preview) return;
+
+  // Butuh konteks aman dan mediaDevices
+  if (!window.isSecureContext && location.hostname !== "localhost") return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+
+  // Jangan start ulang jika sudah ada stream
+  if (state.previewStream) return;
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" }, // kamera belakang di HP
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: false,
+    });
+
+    state.previewStream = stream;
+    preview.srcObject = stream;
+
+    // Tunggu video siap lalu tampilkan
+    await new Promise(function (resolve) {
+      preview.onloadedmetadata = resolve;
+      // fallback jika event tidak muncul
+      setTimeout(resolve, 1500);
+    });
+
+    preview.play().catch(function () {});
+    preview.classList.remove("hidden");
+  } catch (err) {
+    // Izin ditolak atau tidak ada kamera — biarkan layar hitam, tidak crash
+    console.warn("[preview] Kamera preview gagal:", err.message);
+  }
+}
+
+// Hentikan preview stream dan sembunyikan elemen video
+function stopCameraPreview() {
+  if (state.previewStream) {
+    state.previewStream.getTracks().forEach(function (track) {
+      track.stop();
+    });
+    state.previewStream = null;
+  }
+
+  const preview = qs("#camera-preview");
+  if (preview) {
+    preview.srcObject = null;
+    preview.classList.add("hidden");
+  }
+}
+
 function cleanup() {
   if (state.rafId) {
     cancelAnimationFrame(state.rafId);
@@ -630,6 +689,9 @@ function bindUI() {
         throw e;
       }
 
+      // Hentikan preview sebelum AR.js ambil alih stream kamera
+      stopCameraPreview();
+
       showLoading("Membangun scene AR\u2026");
       hideBoot();
 
@@ -690,6 +752,9 @@ async function main() {
         "error",
       );
       if (startBtn) startBtn.disabled = true;
+    } else {
+      // Mulai preview kamera langsung — layar tidak lagi hitam saat overlay terbuka
+      startCameraPreview();
     }
   } catch (err) {
     setStatus(err.message, "error");
