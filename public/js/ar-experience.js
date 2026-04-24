@@ -11,6 +11,7 @@ const state = {
   userStarted: false,
   speechActive: false,
   cameraReady: false,
+  cameraStream: null,
 };
 
 function getExperienceId() {
@@ -71,6 +72,10 @@ function getCameraErrorMessage(error) {
 }
 
 async function requestCameraAccess() {
+  if (state.cameraStream) {
+    return state.cameraStream;
+  }
+
   if (!window.isSecureContext && window.location.hostname !== "localhost") {
     throw new Error(
       "Halaman ini belum berada di konteks aman. Gunakan HTTPS atau localhost agar prompt kamera bisa muncul.",
@@ -83,7 +88,7 @@ async function requestCameraAccess() {
     );
   }
 
-  const stream = await navigator.mediaDevices.getUserMedia({
+  state.cameraStream = await navigator.mediaDevices.getUserMedia({
     video: {
       facingMode: {
         ideal: "environment",
@@ -92,8 +97,18 @@ async function requestCameraAccess() {
     audio: false,
   });
 
-  stream.getTracks().forEach((track) => track.stop());
   state.cameraReady = true;
+  return state.cameraStream;
+}
+
+function releaseCameraAccess() {
+  if (!state.cameraStream) {
+    return;
+  }
+
+  state.cameraStream.getTracks().forEach((track) => track.stop());
+  state.cameraStream = null;
+  state.cameraReady = false;
 }
 
 function createMarkerAttributes(markerConfig) {
@@ -330,6 +345,9 @@ function buildMarkerScene(experience) {
 }
 
 function bindUi() {
+  window.addEventListener("pagehide", releaseCameraAccess);
+  window.addEventListener("beforeunload", releaseCameraAccess);
+
   document.getElementById("play-audio").addEventListener("click", toggleAudio);
 
   document.getElementById("marker-help").addEventListener("click", () => {
