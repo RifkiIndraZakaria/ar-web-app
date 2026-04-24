@@ -195,10 +195,10 @@ function waitForSceneLoad(scene) {
       return;
     }
 
-    if (!window.AFRAME.components || !window.AFRAME.components.arjs) {
+    if (!window.AFRAME.systems || !window.AFRAME.systems.arjs) {
       reject(
         new Error(
-          "Library AR.js gagal dimuat. Periksa koneksi internet atau CDN lalu refresh halaman.",
+          "Library AR.js gagal dimuat. Pastikan file vendor/arjs/aframe-ar.js tersedia lalu refresh halaman.",
         ),
       );
       return;
@@ -779,9 +779,9 @@ function bindUI() {
         );
       }
 
-      if (!window.AFRAME.components || !window.AFRAME.components.arjs) {
+      if (!window.AFRAME.systems || !window.AFRAME.systems.arjs) {
         throw new Error(
-          "Library AR.js gagal dimuat. Pastikan perangkat terhubung internet lalu refresh halaman.",
+          "Library AR.js gagal dimuat. Pastikan file vendor/arjs/aframe-ar.js tersedia lalu refresh halaman.",
         );
       }
 
