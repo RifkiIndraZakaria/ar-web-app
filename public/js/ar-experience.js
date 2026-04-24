@@ -185,9 +185,52 @@ function buildScene() {
 }
 
 function waitForSceneLoad(scene) {
-  return new Promise(function (resolve) {
-    if (scene.hasLoaded) return resolve();
-    scene.addEventListener("loaded", resolve, { once: true });
+  return new Promise(function (resolve, reject) {
+    if (!window.AFRAME) {
+      reject(
+        new Error(
+          "Library A-Frame gagal dimuat. Periksa koneksi internet atau CDN.",
+        ),
+      );
+      return;
+    }
+
+    if (!window.AFRAME.components || !window.AFRAME.components.arjs) {
+      reject(
+        new Error(
+          "Library AR.js gagal dimuat. Periksa koneksi internet atau CDN lalu refresh halaman.",
+        ),
+      );
+      return;
+    }
+
+    if (!scene) {
+      reject(new Error("Scene AR tidak ditemukan."));
+      return;
+    }
+
+    if (scene.hasLoaded || scene.renderStarted) return resolve();
+
+    let done = false;
+    const timeout = setTimeout(function () {
+      if (done) return;
+      done = true;
+      reject(
+        new Error(
+          "Scene AR terlalu lama dimuat. Coba refresh halaman dan izinkan kamera.",
+        ),
+      );
+    }, 12000);
+
+    function finish() {
+      if (done) return;
+      done = true;
+      clearTimeout(timeout);
+      resolve();
+    }
+
+    scene.addEventListener("loaded", finish, { once: true });
+    scene.addEventListener("renderstart", finish, { once: true });
   });
 }
 
@@ -727,10 +770,24 @@ function bindUI() {
         throw e;
       }
 
-      // Preview stream dibiarkan jalan — kamera tetap tampil selama
-      // AR.js scene dibangun. AR.js akan membuka streamnya sendiri.
       showLoading("Membangun scene AR\u2026");
       hideBoot();
+
+      if (!window.AFRAME) {
+        throw new Error(
+          "Library A-Frame gagal dimuat. Pastikan perangkat terhubung internet lalu refresh halaman.",
+        );
+      }
+
+      if (!window.AFRAME.components || !window.AFRAME.components.arjs) {
+        throw new Error(
+          "Library AR.js gagal dimuat. Pastikan perangkat terhubung internet lalu refresh halaman.",
+        );
+      }
+
+      // Lepas preview sebelum AR.js meminta akses kamera. Beberapa browser
+      // mobile hanya mengizinkan satu stream kamera aktif per halaman.
+      stopCameraPreview();
 
       const scene = buildScene();
       await waitForSceneLoad(scene);
