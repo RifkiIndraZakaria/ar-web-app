@@ -1,85 +1,1056 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>AR Experience</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="theme-color" content="#000000" />
+    <title>AR Experience</title>
 
-  <!-- ═══════════════════════════════════════════════════════════════
-       CSS FIX LAYAR HITAM — wajib di-load SEBELUM A-Frame
-       agar style transparansi diterapkan sejak awal.
-       ═══════════════════════════════════════════════════════════════ -->
-  <link rel="stylesheet" href="css/ar.css" />
+    <style>
+      /* ─── Design Tokens ─────────────────────────────────── */
+      :root {
+        --accent: #f97316;
+        --accent-dim: rgba(249, 115, 22, 0.15);
+        --danger: #ff6b6b;
+        --success: #4ade80;
+        --ink: #ffffff;
+        --muted: rgba(255, 255, 255, 0.72);
+        --panel: rgba(10, 10, 10, 0.82);
+        --panel-border: rgba(255, 255, 255, 0.12);
+        --radius: 18px;
+        --blur: blur(16px);
+      }
 
-  <!-- A-Frame (gunakan versi terbaru stabil) -->
-  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+      /* ─── Reset ─────────────────────────────────────────── */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
-  <!-- A-Frame Extras (untuk animation-mixer) -->
-  <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-extras@7.5.0/dist/aframe-extras.min.js"></script>
-<base target="_blank">
-</head>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        color: var(--ink);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        touch-action: none;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
 
-<body>
-  <!-- Container scene akan di-inject oleh ar-experience.js ke sini -->
-  <div id="scene-host" style="background: transparent;"></div>
+      button,
+      a {
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        user-select: none;
+      }
 
-  <!-- HUD Overlay (untuk tombol & status di atas AR) -->
-  <div id="hud" class="hidden">
-    <div id="status-line" class="status-pill">
-      <span class="status-text">Siap…</span>
+      /* ─── A-Frame overrides ─────────────────────────────── */
+      /* Sembunyikan default VR/AR button dari A-Frame —
+               kita pakai tombol kustom "Mulai AR" sendiri */
+      .a-enter-vr-button,
+      .a-enter-ar-button,
+      .a-orientation-modal {
+        display: none !important;
+      }
+
+      /* WebXR canvas — biarkan browser mengelola compositing kamera.
+               z-index: 1 agar tidak menimpa HUD (z-index 20).
+               WebXR pass-through kamera dirender oleh browser di bawah canvas,
+               bukan oleh elemen canvas itu sendiri. */
+      body > canvas,
+      a-scene canvas,
+      #scene-host canvas {
+        display: block !important;
+        visibility: visible !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        max-width: none !important;
+        max-height: none !important;
+        /* z-index 1 — di bawah HUD (20) tapi di atas body background */
+        z-index: 1;
+        /* FIX LAYAR HITAM: background canvas harus transparan */
+        background: transparent !important;
+      }
+
+      /* ─── Utility ────────────────────────────────────────── */
+      .hidden {
+        display: none !important;
+      }
+
+      /* ─── Scene Host ─────────────────────────────────────── */
+      #scene-host {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        background: transparent;
+      }
+
+      /* Saat AR aktif, pastikan body tidak memblokir feed kamera */
+      body.ar-active {
+        background: transparent !important;
+      }
+
+      /* ─── Placed Indicator ───────────────────────────────── */
+      /* Muncul (class "found") saat objek berhasil diletakkan */
+      #marker-indicator {
+        position: fixed;
+        inset: 0;
+        z-index: 15;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+      }
+
+      #marker-indicator.found {
+        opacity: 1;
+      }
+
+      .marker-ring {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        border: 3px solid var(--success);
+        box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5);
+        animation: pulse-ring 1.8s ease-out infinite;
+      }
+
+      .marker-ring::before,
+      .marker-ring::after {
+        content: "";
+        position: absolute;
+        border-radius: 50%;
+        border: 2px solid rgba(74, 222, 128, 0.4);
+        animation: pulse-ring 1.8s ease-out infinite;
+      }
+
+      .marker-ring::before {
+        width: 150px;
+        height: 150px;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        animation-delay: 0.3s;
+      }
+
+      .marker-ring::after {
+        width: 180px;
+        height: 180px;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        animation-delay: 0.6s;
+      }
+
+      @keyframes pulse-ring {
+        0% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        80% {
+          opacity: 0;
+          transform: scale(1.3);
+        }
+        100% {
+          opacity: 0;
+          transform: scale(1.3);
+        }
+      }
+
+      /* ─── HUD ────────────────────────────────────────────── */
+      #hud {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        z-index: 20;
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: calc(env(safe-area-inset-top, 0px) + 14px)
+          calc(env(safe-area-inset-right, 0px) + 10px)
+          calc(env(safe-area-inset-bottom, 0px) + 32px)
+          calc(env(safe-area-inset-left, 0px) + 10px);
+        gap: 0;
+        overflow: hidden;
+      }
+
+      /* Top row */
+      .hud-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        width: 100%;
+        overflow: hidden;
+      }
+
+      /* ── Info Panel ── */
+      .info-panel {
+        flex: 1 1 auto;
+        min-width: 0;
+        max-width: min(300px, calc(100% - 58px));
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: var(--radius);
+        backdrop-filter: var(--blur);
+        -webkit-backdrop-filter: var(--blur);
+        overflow: hidden;
+        transition: all 0.3s ease;
+        pointer-events: auto;
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 14px;
+        gap: 8px;
+      }
+
+      .panel-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: var(--ink);
+        line-height: 1.3;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #toggle-panel {
+        flex-shrink: 0;
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        border: 1px solid var(--panel-border);
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--muted);
+        font-size: 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition:
+          background 0.2s,
+          color 0.2s;
+        pointer-events: auto;
+        line-height: 1;
+      }
+
+      #toggle-panel:hover {
+        background: rgba(255, 255, 255, 0.15);
+        color: var(--ink);
+      }
+
+      .panel-body {
+        padding: 0 14px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        overflow: hidden;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        max-height: 200px;
+        transition:
+          max-height 0.35s ease,
+          padding 0.35s ease,
+          opacity 0.3s ease;
+        opacity: 1;
+      }
+
+      .info-panel.collapsed .panel-body {
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      #experience-description {
+        font-size: 0.84rem;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      /* Status Pill */
+      .status-pill {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 50px;
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid var(--panel-border);
+        font-size: 0.8rem;
+        color: var(--muted);
+        transition:
+          background 0.3s,
+          border-color 0.3s;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+        flex-shrink: 0;
+        transition:
+          background 0.3s,
+          box-shadow 0.3s;
+      }
+
+      .status-text {
+        line-height: 1.3;
+      }
+
+      .status-pill.success .status-dot {
+        background: #4ade80;
+        box-shadow: 0 0 6px rgba(74, 222, 128, 0.7);
+      }
+
+      .status-pill.success {
+        border-color: rgba(74, 222, 128, 0.3);
+        color: #a3f0c0;
+      }
+
+      .status-pill.error .status-dot {
+        background: #ff6b6b;
+        box-shadow: 0 0 6px rgba(255, 107, 107, 0.7);
+      }
+
+      .status-pill.error {
+        border-color: rgba(255, 107, 107, 0.3);
+        color: #ffb3b3;
+      }
+
+      /* Top Actions */
+      .top-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        pointer-events: auto;
+        flex-shrink: 0;
+      }
+
+      .icon-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 1px solid var(--panel-border);
+        background: var(--panel);
+        backdrop-filter: var(--blur);
+        -webkit-backdrop-filter: var(--blur);
+        color: var(--ink);
+        font-size: 1.15rem;
+        cursor: pointer;
+        text-decoration: none;
+        transition:
+          background 0.2s,
+          transform 0.15s,
+          border-color 0.2s;
+        pointer-events: auto;
+        appearance: none;
+        -webkit-appearance: none;
+        line-height: 1;
+      }
+
+      .icon-btn:hover,
+      .icon-btn:active {
+        background: rgba(255, 255, 255, 0.16);
+        transform: scale(0.95);
+      }
+
+      .icon-btn:active {
+        transform: scale(0.9);
+      }
+
+      /* ── HUD Bottom ── */
+      .hud-bottom {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        pointer-events: none;
+        flex-shrink: 0;
+      }
+
+      .gesture-hint {
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.5);
+        text-align: center;
+        padding: 6px 14px;
+        background: rgba(0, 0, 0, 0.45);
+        border-radius: 50px;
+        backdrop-filter: var(--blur);
+        -webkit-backdrop-filter: var(--blur);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        letter-spacing: 0.01em;
+      }
+
+      .control-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        max-width: 460px;
+        pointer-events: auto;
+        padding: 0 4px;
+      }
+
+      .ctrl-btn {
+        flex: 1;
+        min-width: 0;
+        height: 44px;
+        border-radius: 12px;
+        border: 1px solid var(--panel-border);
+        background: var(--panel);
+        backdrop-filter: var(--blur);
+        -webkit-backdrop-filter: var(--blur);
+        color: var(--ink);
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 0 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        white-space: nowrap;
+        transition:
+          background 0.2s,
+          transform 0.1s;
+        appearance: none;
+        -webkit-appearance: none;
+      }
+
+      .ctrl-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .ctrl-btn:active {
+        transform: scale(0.94);
+      }
+
+      /* ─── Loading Overlay ────────────────────────────────── */
+      #loading-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 25;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        background: rgba(0, 0, 0, 0.85);
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .spinner-wrap {
+        position: relative;
+        width: 56px;
+        height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .spinner {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        border: 3px solid rgba(255, 255, 255, 0.1);
+        border-top-color: var(--accent);
+        animation: spin 0.9s linear infinite;
+      }
+
+      .spinner-inner {
+        position: absolute;
+        inset: 8px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 255, 255, 0.05);
+        border-bottom-color: var(--accent);
+        animation: spin 1.4s linear infinite reverse;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* ─── Boot Overlay ───────────────────────────────────── */
+      #boot-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 30;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: linear-gradient(160deg, #0a0a0f 0%, #0f0a18 100%);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .boot-card {
+        width: 100%;
+        max-width: 420px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 26px;
+        padding: 28px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 22px;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+      }
+
+      .boot-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        border-radius: 50px;
+        background: var(--accent-dim);
+        border: 1px solid rgba(249, 115, 22, 0.3);
+        color: var(--accent);
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        width: fit-content;
+      }
+
+      #boot-title {
+        font-size: 1.4rem;
+        font-weight: 800;
+        color: var(--ink);
+        line-height: 1.3;
+      }
+
+      .boot-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .boot-step {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+      }
+
+      .step-num {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        font-size: 0.85rem;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .step-content {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+
+      .step-title {
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--ink);
+      }
+
+      .step-desc {
+        font-size: 0.8rem;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      /* WebXR badge */
+      .webxr-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        border-radius: 50px;
+        background: rgba(99, 102, 241, 0.12);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        color: #a5b4fc;
+        font-size: 0.75rem;
+        font-weight: 600;
+        width: fit-content;
+      }
+
+      #boot-text {
+        font-size: 0.82rem;
+        color: var(--muted);
+        line-height: 1.6;
+        padding: 10px 14px;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 11px;
+        border-left: 3px solid var(--accent);
+      }
+
+      .boot-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .btn-primary {
+        width: 100%;
+        height: 52px;
+        border-radius: 14px;
+        border: none;
+        background: var(--accent);
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 800;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        letter-spacing: 0.02em;
+        transition:
+          opacity 0.2s,
+          transform 0.15s,
+          background 0.2s;
+        appearance: none;
+        -webkit-appearance: none;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .btn-primary::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          135deg,
+          rgba(255, 255, 255, 0.15) 0%,
+          transparent 60%
+        );
+        pointer-events: none;
+      }
+
+      .btn-primary:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .btn-primary:not(:disabled):hover {
+        background: #fb923c;
+        transform: translateY(-1px);
+      }
+      .btn-primary:not(:disabled):active {
+        transform: scale(0.97);
+      }
+
+      .btn-back {
+        width: 100%;
+        height: 44px;
+        border-radius: 12px;
+        border: 1px solid var(--panel-border);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--muted);
+        font-size: 0.88rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        text-decoration: none;
+        transition:
+          background 0.2s,
+          color 0.2s,
+          transform 0.15s;
+        appearance: none;
+        -webkit-appearance: none;
+      }
+
+      .btn-back:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--ink);
+      }
+      .btn-back:active {
+        transform: scale(0.97);
+      }
+
+      /* ─── Responsive Tweaks ──────────────────────────────── */
+      @media (max-width: 480px) {
+        #boot-overlay {
+          padding: 16px;
+          align-items: flex-end;
+        }
+
+        .boot-card {
+          border-radius: 22px 22px 16px 16px;
+          padding: 22px 18px;
+          gap: 18px;
+          max-width: 100%;
+        }
+
+        #boot-title {
+          font-size: 1.25rem;
+        }
+
+        .info-panel {
+          max-width: calc(100% - 64px);
+        }
+
+        .panel-body {
+          max-height: 110px;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+
+        .hud-top {
+          flex-direction: row;
+          align-items: flex-start;
+          gap: 8px;
+        }
+        .top-actions {
+          flex-direction: column;
+          gap: 6px;
+          flex-shrink: 0;
+        }
+        .icon-btn {
+          width: 40px;
+          height: 40px;
+          font-size: 1rem;
+        }
+        .ctrl-btn {
+          height: 42px;
+          font-size: 0.7rem;
+          border-radius: 10px;
+          padding: 0 4px;
+        }
+        .control-strip {
+          gap: 5px;
+          max-width: 100%;
+        }
+        .gesture-hint {
+          font-size: 0.68rem;
+          padding: 5px 10px;
+        }
+        #hud {
+          padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
+        }
+      }
+
+      @media (max-width: 360px) {
+        #hud {
+          padding-left: 8px;
+          padding-right: 8px;
+          padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
+        }
+        .info-panel {
+          max-width: calc(100% - 52px);
+        }
+        .icon-btn {
+          width: 38px;
+          height: 38px;
+          font-size: 0.95rem;
+        }
+        .ctrl-btn {
+          font-size: 0.65rem;
+          height: 40px;
+        }
+        .boot-card {
+          padding: 18px 14px;
+        }
+      }
+
+      @media (max-height: 500px) and (orientation: landscape) {
+        #boot-overlay {
+          align-items: flex-start;
+          padding-top: 12px;
+          padding-bottom: 12px;
+        }
+
+        .boot-card {
+          flex-direction: row;
+          flex-wrap: wrap;
+          max-width: 680px;
+          gap: 14px;
+          padding: 18px 20px;
+        }
+
+        .boot-card > * {
+          flex: 1 1 200px;
+        }
+        .boot-steps {
+          flex: 2 1 320px;
+        }
+        .boot-actions {
+          flex: 0 0 100%;
+          flex-direction: row;
+        }
+        .btn-primary,
+        .btn-back {
+          flex: 1;
+        }
+
+        #hud {
+          padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
+          padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+          padding-left: 10px;
+          padding-right: 10px;
+        }
+
+        .gesture-hint {
+          display: none;
+        }
+      }
+    </style>
+
+    <!--
+            VENDOR SCRIPTS
+            ══════════════
+            ✅ A-Frame        — render 3D + WebXR session management
+            ✅ A-Frame Extras  — animation-mixer untuk GLTF animasi
+            ❌ AR.js           — DIHAPUS (tidak dibutuhkan untuk WebXR)
+
+            WebXR hit-test diimplementasikan langsung di ar-experience.js
+            menggunakan AFRAME.registerComponent + requestHitTestSource API.
+            Tidak diperlukan library tambahan.
+        -->
+    <script src="vendor/aframe/aframe.min.js"></script>
+    <script src="vendor/aframe-extras/aframe-extras.min.js"></script>
+  </head>
+
+  <body>
+    <!-- ══════════════════════════════════════════════════════
+         BOOT OVERLAY  (z-index 30)
+         Muncul saat halaman pertama dibuka sebelum AR dimulai
+    ═══════════════════════════════════════════════════════ -->
+    <div id="boot-overlay">
+      <div class="boot-card">
+        <!-- Badge -->
+        <div>
+          <div class="boot-badge">🌐 WebXR AR — Markerless</div>
+        </div>
+
+        <!-- Judul (diisi oleh JS dari JSON) -->
+        <h2 id="boot-title">Memuat Experience…</h2>
+
+        <!-- WebXR info badge -->
+        <div class="webxr-badge">
+          📱 Membutuhkan Chrome + ARCore (Android) atau Safari + ARKit (iOS)
+        </div>
+
+        <!-- 3 Langkah WebXR -->
+        <div class="boot-steps">
+          <div class="boot-step">
+            <div class="step-num">1</div>
+            <div class="step-content">
+              <div class="step-title">Izinkan Kamera</div>
+              <div class="step-desc">
+                Tekan "Mulai AR" lalu izinkan akses kamera saat browser meminta.
+              </div>
+            </div>
+          </div>
+          <div class="boot-step">
+            <div class="step-num">2</div>
+            <div class="step-content">
+              <div class="step-title">Arahkan ke Permukaan</div>
+              <div class="step-desc">
+                Arahkan kamera ke lantai atau meja yang datar sampai lingkaran
+                oranye muncul.
+              </div>
+            </div>
+          </div>
+          <div class="boot-step">
+            <div class="step-num">3</div>
+            <div class="step-content">
+              <div class="step-title">Tap untuk Meletakkan</div>
+              <div class="step-desc">
+                Tap layar untuk meletakkan objek 3D. Cubit untuk skala, geser
+                untuk putar.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hint dari JSON -->
+        <div id="boot-text">Memuat informasi experience dari server…</div>
+
+        <!-- Tombol aksi -->
+        <div class="boot-actions">
+          <button id="start-ar" class="btn-primary" disabled>
+            <span>🚀</span>
+            <span>Mulai AR</span>
+          </button>
+          <a class="btn-back" href="index.html">
+            <span>←</span>
+            <span>Kembali ke Launcher</span>
+          </a>
+        </div>
+      </div>
     </div>
 
-    <div id="info-panel">
-      <button id="toggle-panel">−</button>
-      <h2 id="experience-title">AR</h2>
-      <p id="experience-description"></p>
-      <div id="controls">
-        <button data-action="rotate-left">↺ Putar Kiri</button>
-        <button data-action="rotate-right">↻ Putar Kanan</button>
-        <button data-action="scale-down">− Kecilkan</button>
-        <button data-action="scale-up">+ Besarkan</button>
-        <button data-action="reset">⟲ Reset</button>
+    <!-- ══════════════════════════════════════════════════════
+         LOADING OVERLAY  (z-index 25)
+    ═══════════════════════════════════════════════════════ -->
+    <div id="loading-overlay" class="hidden">
+      <div class="spinner-wrap">
+        <div class="spinner"></div>
+        <div class="spinner-inner"></div>
       </div>
-      <p class="gesture-hint">Tap: letakkan | Cubit: skala | Geser: putar | Ketuk 2×: reset</p>
+      <p id="loading-text">Memuat scene AR…</p>
     </div>
 
-    <button id="play-audio">🔊 Audio</button>
-    <button id="marker-help">❓ Bantuan</button>
-  </div>
+    <!-- ══════════════════════════════════════════════════════
+         SCENE HOST  (z-index 1)
+         a-scene diinjeksikan oleh ar-experience.js ke sini
+    ═══════════════════════════════════════════════════════ -->
+    <div id="scene-host"></div>
 
-  <!-- Boot Overlay -->
-  <div id="boot-overlay">
-    <h1 id="boot-title">AR Experience</h1>
-    <p id="boot-text">Tekan Mulai AR untuk memulai.</p>
-    <div class="boot-steps">
-      <div class="boot-step">
-        <strong class="step-title">1. Izinkan Kamera</strong>
-        <p class="step-desc">Tekan "Mulai AR" lalu izinkan akses kamera.</p>
+    <!-- ══════════════════════════════════════════════════════
+         PLACED INDICATOR  (z-index 15)
+         Muncul (class "found") saat objek berhasil diletakkan
+    ═══════════════════════════════════════════════════════ -->
+    <div id="marker-indicator">
+      <div class="marker-ring"></div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════
+         HUD  (z-index 20)
+         Tampil saat AR aktif; default pointer-events: none
+    ═══════════════════════════════════════════════════════ -->
+    <div id="hud" class="hidden">
+      <!-- Top row: info panel + action buttons -->
+      <div class="hud-top">
+        <!-- Info Panel (collapsible) -->
+        <div class="info-panel" id="info-panel">
+          <div class="panel-header">
+            <span class="panel-title" id="experience-title">Loading…</span>
+            <button
+              id="toggle-panel"
+              title="Sembunyikan panel"
+              aria-label="Toggle panel"
+            >
+              −
+            </button>
+          </div>
+          <div class="panel-body">
+            <p id="experience-description">Mengambil data experience…</p>
+            <div class="status-pill" id="status-line">
+              <span class="status-dot"></span>
+              <span class="status-text">Menginisialisasi AR…</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Top-right icon buttons -->
+        <div class="top-actions">
+          <button
+            class="icon-btn"
+            id="play-audio"
+            title="Putar / pause audio"
+            aria-label="Audio"
+          >
+            🔊
+          </button>
+          <button
+            class="icon-btn"
+            id="marker-help"
+            title="Cara meletakkan objek"
+            aria-label="Bantuan penempatan"
+          >
+            ❓
+          </button>
+          <a
+            class="icon-btn"
+            href="index.html"
+            title="Kembali ke launcher"
+            aria-label="Kembali"
+            >🏠</a
+          >
+        </div>
       </div>
-      <div class="boot-step">
-        <strong class="step-title">2. Arahkan ke Permukaan</strong>
-        <p class="step-desc">Arahkan kamera ke lantai/meja datar.</p>
-      </div>
-      <div class="boot-step">
-        <strong class="step-title">3. Tap untuk Meletakkan</strong>
-        <p class="step-desc">Tap layar untuk meletakkan objek 3D.</p>
+
+      <!-- Bottom: gesture hint + control strip -->
+      <div class="hud-bottom">
+        <p class="gesture-hint">
+          Tap: letakkan &nbsp;|&nbsp; Cubit: skala &nbsp;|&nbsp; Geser: putar
+          &nbsp;|&nbsp; Ketuk 2×: reset
+        </p>
+        <div class="control-strip">
+          <button
+            class="ctrl-btn"
+            data-action="rotate-left"
+            aria-label="Putar kiri"
+          >
+            ↺ Putar
+          </button>
+          <button
+            class="ctrl-btn"
+            data-action="rotate-right"
+            aria-label="Putar kanan"
+          >
+            ↻ Putar
+          </button>
+          <button
+            class="ctrl-btn"
+            data-action="scale-down"
+            aria-label="Perkecil"
+          >
+            ⊖ Kecil
+          </button>
+          <button class="ctrl-btn" data-action="scale-up" aria-label="Perbesar">
+            ⊕ Besar
+          </button>
+          <button class="ctrl-btn" data-action="reset" aria-label="Reset">
+            ↩ Reset
+          </button>
+        </div>
       </div>
     </div>
-    <button id="start-ar" disabled>
-      <span>▶</span> <span>Mulai AR</span>
-    </button>
-  </div>
 
-  <!-- Loading Overlay -->
-  <div id="loading-overlay" class="hidden">
-    <div class="spinner"></div>
-    <p id="loading-text">Memuat…</p>
-  </div>
-
-  <!-- Marker / placement indicator -->
-  <div id="marker-indicator"></div>
-
-  <!-- Main AR Logic (sudah termasuk fix layar hitam) -->
-  <script src="js/ar-experience.js"></script>
-</body>
+    <!-- App logic -->
+    <script src="js/ar-experience.js"></script>
+  </body>
 </html>
