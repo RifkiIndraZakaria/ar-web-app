@@ -104,7 +104,7 @@ function createSceneElement() {
   scene.setAttribute("device-orientation-permission-ui", "enabled: false");
   scene.setAttribute(
     "arjs",
-    "sourceType: webcam; videoTexture: true; debugUIEnabled: false;",
+    "sourceType: webcam; videoTexture: false; debugUIEnabled: false;",
   );
 
   const assets = document.createElement("a-assets");
@@ -177,7 +177,9 @@ function createMarkerAttributes(markerConfig) {
     };
   }
 
-  throw new Error("Marker config tidak valid. Gunakan preset, barcode, atau pattern.");
+  throw new Error(
+    "Marker config tidak valid. Gunakan preset, barcode, atau pattern.",
+  );
 }
 
 function createModelEntity(experience) {
@@ -257,7 +259,8 @@ function setupAudio(experience) {
     const audio = new Audio(audioConfig.src);
     audio.preload = "auto";
     audio.loop = Boolean(audioConfig.loop);
-    audio.volume = typeof audioConfig.volume === "number" ? audioConfig.volume : 0.9;
+    audio.volume =
+      typeof audioConfig.volume === "number" ? audioConfig.volume : 0.9;
     state.audioElement = audio;
   }
 }
@@ -378,7 +381,10 @@ function buildMarkerScene(experience) {
 
   marker.addEventListener("markerFound", () => {
     state.markerVisible = true;
-    setStatus("Marker terdeteksi. Objek ditempatkan di atas marker.", "success");
+    setStatus(
+      "Marker terdeteksi. Objek ditempatkan di atas marker.",
+      "success",
+    );
     maybeAutoplayAudio("marker");
   });
 
@@ -420,10 +426,18 @@ function bindUi() {
           state.currentRotationY += rotateStep;
           break;
         case "scale-down":
-          state.currentScale = clamp(state.currentScale - scaleStep, minScale, maxScale);
+          state.currentScale = clamp(
+            state.currentScale - scaleStep,
+            minScale,
+            maxScale,
+          );
           break;
         case "scale-up":
-          state.currentScale = clamp(state.currentScale + scaleStep, minScale, maxScale);
+          state.currentScale = clamp(
+            state.currentScale + scaleStep,
+            minScale,
+            maxScale,
+          );
           break;
         case "reset":
           resetModelTransform();
@@ -469,11 +483,7 @@ function bindUi() {
 function startAnimationLoop() {
   function step() {
     const interaction = state.experience?.interaction || {};
-    if (
-      state.markerVisible &&
-      state.modelElement &&
-      interaction.autoRotate
-    ) {
+    if (state.markerVisible && state.modelElement && interaction.autoRotate) {
       state.currentRotationY += Number(interaction.autoRotateStep || 0.6);
       applyModelTransform();
     }
