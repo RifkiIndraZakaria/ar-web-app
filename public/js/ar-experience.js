@@ -1,5 +1,6 @@
 const state = {
   experience: null,
+  scene: null,
   markerElement: null,
   modelElement: null,
   audioElement: null,
@@ -12,6 +13,7 @@ const state = {
   speechActive: false,
   cameraReady: false,
   cameraStream: null,
+  animationLoopStarted: false,
 };
 
 function getExperienceId() {
@@ -72,10 +74,6 @@ function getCameraErrorMessage(error) {
 }
 
 async function requestCameraAccess() {
-  if (state.cameraStream) {
-    return state.cameraStream;
-  }
-
   if (!window.isSecureContext && window.location.hostname !== "localhost") {
     throw new Error(
       "Halaman ini belum berada di konteks aman. Gunakan HTTPS atau localhost agar prompt kamera bisa muncul.",
@@ -88,7 +86,7 @@ async function requestCameraAccess() {
     );
   }
 
-  state.cameraStream = await navigator.mediaDevices.getUserMedia({
+  const stream = await navigator.mediaDevices.getUserMedia({
     video: {
       facingMode: {
         ideal: "environment",
@@ -97,8 +95,9 @@ async function requestCameraAccess() {
     audio: false,
   });
 
+  state.cameraStream = stream;
   state.cameraReady = true;
-  return state.cameraStream;
+  return stream;
 }
 
 function releaseCameraAccess() {
@@ -108,7 +107,59 @@ function releaseCameraAccess() {
 
   state.cameraStream.getTracks().forEach((track) => track.stop());
   state.cameraStream = null;
-  state.cameraReady = false;
+}
+
+function createSceneElement() {
+  const scene = document.createElement("a-scene");
+  scene.setAttribute("embedded", "");
+  scene.setAttribute("renderer", "antialias: true; alpha: true");
+  scene.setAttribute("vr-mode-ui", "enabled: false");
+  scene.setAttribute("device-orientation-permission-ui", "enabled: false");
+  scene.setAttribute("arjs", "sourceType: webcam; debugUIEnabled: false;");
+
+  const assets = document.createElement("a-assets");
+  assets.setAttribute("id", "experience-assets");
+  scene.appendChild(assets);
+
+  const camera = document.createElement("a-entity");
+  camera.setAttribute("camera", "");
+  scene.appendChild(camera);
+
+  scene.addEventListener("camera-init", () => {
+    state.cameraReady = true;
+    setStatus("Feed kamera aktif. Arahkan perangkat ke marker.", "success");
+  });
+
+  scene.addEventListener("camera-error", (event) => {
+    const errorMessage = getCameraErrorMessage(event?.detail || event);
+    setStatus(errorMessage, "error");
+    document.getElementById("boot-text").textContent = errorMessage;
+  });
+
+  return scene;
+}
+
+async function ensureSceneStarted() {
+  if (state.scene) {
+    return state.scene;
+  }
+
+  const host = document.getElementById("scene-host");
+  const scene = createSceneElement();
+  host.innerHTML = "";
+  host.appendChild(scene);
+  state.scene = scene;
+
+  await new Promise((resolve) => {
+    if (scene.hasLoaded) {
+      resolve();
+      return;
+    }
+
+    scene.addEventListener("loaded", () => resolve(), { once: true });
+  });
+
+  return scene;
 }
 
 function createMarkerAttributes(markerConfig) {
@@ -299,7 +350,7 @@ function maybeAutoplayAudio(trigger) {
 }
 
 function buildMarkerScene(experience) {
-  const scene = document.querySelector("a-scene");
+  const scene = state.scene;
 
   if (state.markerElement) {
     state.markerElement.remove();
@@ -395,9 +446,19 @@ function bindUi() {
 
     try {
       await requestCameraAccess();
+      releaseCameraAccess();
+      await ensureSceneStarted();
       state.userStarted = true;
+      buildMarkerScene(state.experience);
+      if (!state.animationLoopStarted) {
+        startAnimationLoop();
+        state.animationLoopStarted = true;
+      }
       document.getElementById("boot-overlay").classList.add("hidden");
-      setStatus("Kamera diizinkan. Arahkan perangkat ke marker.", "success");
+      setStatus(
+        "Izin kamera diberikan. Menyalakan feed kamera dan menunggu marker...",
+        "success",
+      );
       maybeAutoplayAudio("start");
     } catch (error) {
       const message = getCameraErrorMessage(error);
@@ -445,8 +506,6 @@ async function main() {
     state.experience = experience;
     setIntroCopy(experience);
     setupAudio(experience);
-    buildMarkerScene(experience);
-    startAnimationLoop();
     if (!window.isSecureContext && window.location.hostname !== "localhost") {
       setStatus(
         "Halaman belum HTTPS/localhost, jadi kamera tidak akan terbuka.",
