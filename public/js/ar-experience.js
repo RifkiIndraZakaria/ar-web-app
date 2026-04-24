@@ -184,7 +184,9 @@ function buildScene() {
   return scene;
 }
 
-function waitForSceneLoad(scene) {
+function waitForSceneLoad(scene, timeoutMs) {
+  if (timeoutMs === undefined) timeoutMs = 8000;
+
   return new Promise(function (resolve, reject) {
     if (!window.AFRAME) {
       reject(
@@ -209,24 +211,20 @@ function waitForSceneLoad(scene) {
       return;
     }
 
-    if (scene.hasLoaded || scene.renderStarted) return resolve();
+    if (scene.hasLoaded || scene.renderStarted) return resolve(true);
 
     let done = false;
     const timeout = setTimeout(function () {
       if (done) return;
       done = true;
-      reject(
-        new Error(
-          "Scene AR terlalu lama dimuat. Coba refresh halaman dan izinkan kamera.",
-        ),
-      );
-    }, 12000);
+      resolve(false);
+    }, timeoutMs);
 
     function finish() {
       if (done) return;
       done = true;
       clearTimeout(timeout);
-      resolve();
+      resolve(true);
     }
 
     scene.addEventListener("loaded", finish, { once: true });
@@ -790,10 +788,14 @@ function bindUI() {
       stopCameraPreview();
 
       const scene = buildScene();
-      await waitForSceneLoad(scene);
-
       buildMarkerScene(state.experience);
       setupAudio(state.experience);
+
+      const sceneReady = await waitForSceneLoad(scene, 8000);
+      if (!sceneReady) {
+        setStatus("Scene AR masih menyiapkan kamera\u2026");
+      }
+
       state.userStarted = true;
       startLoop();
       bindTouchGestures();
@@ -814,7 +816,7 @@ function bindUI() {
       setStatus("Menunggu video kamera\u2026");
 
       try {
-        await waitForCameraVideo(15000);
+        await waitForCameraVideo(30000);
         // AR.js stream sudah aktif — lepas preview untuk hemat sumber daya
         stopCameraPreview();
         setStatus("Kamera aktif \u2014 arahkan ke marker.", "success");
