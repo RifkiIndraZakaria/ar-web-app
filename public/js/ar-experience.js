@@ -144,9 +144,15 @@ async function ensureSceneStarted() {
     return state.scene;
   }
 
-  const host = document.getElementById("scene-host");
+  let host = document.getElementById("scene-host");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "scene-host";
+    document.body.prepend(host);
+  }
+
   const scene = createSceneElement();
-  host.innerHTML = "";
+  host.replaceChildren();
   host.appendChild(scene);
   state.scene = scene;
 
