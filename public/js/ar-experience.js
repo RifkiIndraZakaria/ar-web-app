@@ -157,7 +157,7 @@ function buildScene() {
   scene.setAttribute("device-orientation-permission-ui", "enabled: false");
   scene.setAttribute(
     "arjs",
-    "sourceType: webcam; videoTexture: false; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;",
+    "sourceType: webcam; videoTexture: true; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;",
   );
 
   // Wajib: A-Frame background component defaultnya opaque hitam,
@@ -216,13 +216,16 @@ function waitForCameraVideo(timeoutMs) {
         return;
       }
 
-      // Cari video AR.js, bukan preview kita (#camera-preview)
+      // Dengan videoTexture: true, AR.js memakai video sebagai WebGL texture
+      // dan menyembunyikan elemen video-nya. Deteksi lewat dua jalur:
+      // 1) video DOM yang masih playing (readyState >= 2, tidak paused)
+      // 2) canvas a-scene sudah punya frame (AR.js mulai render kamera)
       const v = document.querySelector("video:not(#camera-preview)");
       if (v) {
-        if (v.readyState >= 2 && !v.paused) {
+        // Video mungkin tersembunyi (display:none) tapi stream tetap aktif
+        if (v.readyState >= 2 && v.srcObject) {
           return finish(v);
         }
-
         if (!listenerAttached) {
           listenerAttached = true;
           v.addEventListener(
@@ -232,17 +235,21 @@ function waitForCameraVideo(timeoutMs) {
             },
             { once: true },
           );
-          if (v.readyState >= 3) {
-            v.play().catch(function () {});
-          } else {
-            v.addEventListener(
-              "canplay",
-              function () {
-                v.play().catch(function () {});
-              },
-              { once: true },
-            );
-          }
+          v.addEventListener(
+            "loadeddata",
+            function () {
+              finish(v);
+            },
+            { once: true },
+          );
+        }
+      }
+
+      // Fallback: cek apakah canvas a-scene sudah aktif merender kamera
+      if (!v && state.scene) {
+        const canvas = state.scene.querySelector("canvas");
+        if (canvas && canvas.width > 0 && canvas.height > 0) {
+          return finish(canvas);
         }
       }
 
@@ -738,16 +745,27 @@ function bindUI() {
       const hud = qs("#hud");
       if (hud) hud.classList.remove("hidden");
 
+      // Auto-collapse info panel di layar kecil (Android mobile)
+      // agar kamera terlihat lebih luas setelah AR aktif
+      if (window.innerWidth <= 480) {
+        const infoPanel = qs("#info-panel");
+        const toggleBtn = qs("#toggle-panel");
+        if (infoPanel) infoPanel.classList.add("collapsed");
+        if (toggleBtn) toggleBtn.textContent = "+";
+      }
+
       setStatus("Menunggu video kamera\u2026");
 
       try {
         await waitForCameraVideo(15000);
-        // AR.js sudah punya streamnya sendiri — preview bisa dilepas
+        // AR.js stream sudah aktif — lepas preview untuk hemat sumber daya
         stopCameraPreview();
         setStatus("Kamera aktif \u2014 arahkan ke marker.", "success");
       } catch (_) {
-        // AR.js video belum muncul tapi kamera preview masih tampil
-        setStatus("Arahkan kamera ke marker jika tampil.", "");
+        // Timeout — dengan videoTexture:true kamera tetap bisa jalan
+        // lewat WebGL meski video DOM tidak terdeteksi. Lepas preview juga.
+        stopCameraPreview();
+        setStatus("Arahkan kamera ke marker.", "");
       }
 
       hideLoading();

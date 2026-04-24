@@ -4,7 +4,7 @@
         <meta charset="UTF-8" />
         <meta
             name="viewport"
-            content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
         />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -68,19 +68,48 @@
             }
 
             /* KRITIS: AR.js inject video & canvas ke body level */
+            /* Video selalu block + full-screen — Android Chrome kadang
+               render video sebagai inline/hidden sehingga terlihat hitam.
+               Gunakan 100vw/100vh bukan 100% karena % pada video bisa
+               tidak mengikuti viewport di beberapa Android WebView. */
             body > video,
-            body > canvas,
             a-scene video,
-            a-scene canvas,
-            #scene-host video,
-            #scene-host canvas {
+            #scene-host video {
+                display: block !important;
+                visibility: visible !important;
                 position: fixed !important;
-                inset: 0 !important;
-                width: 100% !important;
-                height: 100% !important;
-                object-fit: cover;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                bottom: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                object-fit: cover !important;
                 max-width: none !important;
                 max-height: none !important;
+                transform: none !important;
+                opacity: 1 !important;
+                z-index: 2;
+            }
+
+            body > canvas,
+            a-scene canvas,
+            #scene-host canvas {
+                display: block !important;
+                visibility: visible !important;
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                max-width: none !important;
+                max-height: none !important;
+                z-index: 3;
+            }
+
+            /* Camera preview z-index harus di bawah AR.js video/canvas */
+            #camera-preview {
+                z-index: 1 !important;
             }
 
             /* ─── Utility ────────────────────────────────────────── */
@@ -179,17 +208,32 @@
             /* ─── HUD ────────────────────────────────────────────── */
             #hud {
                 position: fixed;
-                inset: 0;
+                top: 0;
+                left: 0;
+                right: 0;
+                /* bottom: 0 saja tidak cukup di Android Chrome karena
+                   dynamic URL bar mengubah 100vh saat scroll.
+                   Gunakan height: 100% + min-height sebagai fallback. */
+                bottom: 0;
+                width: 100%;
+                /* dvh = dynamic viewport height (Chrome 108+, Android Chrome ~108)
+                   Fallback ke 100% untuk browser lama */
+                height: 100%;
+                min-height: -webkit-fill-available;
                 z-index: 20;
                 pointer-events: none;
                 display: flex;
                 flex-direction: column;
                 justify-content: space-between;
+                /* Padding bawah 32px: mengakomodasi gesture bar Android
+                   yang tidak selalu terefleksi di safe-area-inset-bottom */
                 padding: calc(env(safe-area-inset-top, 0px) + 14px)
-                    calc(env(safe-area-inset-right, 0px) + 14px)
-                    calc(env(safe-area-inset-bottom, 0px) + 14px)
-                    calc(env(safe-area-inset-left, 0px) + 14px);
+                    calc(env(safe-area-inset-right, 0px) + 10px)
+                    calc(env(safe-area-inset-bottom, 0px) + 32px)
+                    calc(env(safe-area-inset-left, 0px) + 10px);
                 gap: 0;
+                box-sizing: border-box;
+                overflow: hidden;
             }
 
             /* Top row */
@@ -198,12 +242,19 @@
                 align-items: flex-start;
                 justify-content: space-between;
                 gap: 10px;
+                /* Pastikan row tidak melampaui lebar layar */
+                width: 100%;
+                overflow: hidden;
             }
 
             /* ── Info Panel ── */
             .info-panel {
-                flex: 1;
-                max-width: 320px;
+                /* flex: 1 1 auto + min-width: 0 agar flex shrink bekerja
+                   benar di Android — tanpa ini panel bisa overflow kanan */
+                flex: 1 1 auto;
+                min-width: 0;
+                /* Sisakan ruang untuk icon buttons (44px) + gap (10px) */
+                max-width: min(300px, calc(100% - 58px));
                 background: var(--panel);
                 border: 1px solid var(--panel-border);
                 border-radius: var(--radius);
@@ -266,7 +317,9 @@
                 flex-direction: column;
                 gap: 10px;
                 overflow: hidden;
-                max-height: 300px;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+                max-height: 200px;
                 transition:
                     max-height 0.35s ease,
                     padding 0.35s ease,
@@ -388,8 +441,10 @@
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                gap: 10px;
+                gap: 8px;
                 pointer-events: none;
+                /* Pastikan konten bawah tidak terpotong nav bar Android */
+                flex-shrink: 0;
             }
 
             .gesture-hint {
@@ -407,12 +462,15 @@
 
             .control-strip {
                 display: flex;
-                gap: 8px;
+                flex-wrap: wrap;
+                gap: 6px;
                 align-items: center;
                 justify-content: center;
                 width: 100%;
                 max-width: 460px;
                 pointer-events: auto;
+                padding: 0 4px;
+                box-sizing: border-box;
             }
 
             .ctrl-btn {
@@ -751,50 +809,83 @@
                     font-size: 1.25rem;
                 }
 
+                /* Info panel: jangan sampai melebihi layar,
+                   sisakan 44px (tombol) + 10px (gap) + 10px (padding) */
                 .info-panel {
-                    max-width: 100%;
+                    max-width: calc(100% - 64px);
+                }
+
+                .panel-body {
+                    max-height: 110px;
+                    overflow-y: auto;
+                    -webkit-overflow-scrolling: touch;
                 }
 
                 .hud-top {
                     flex-direction: row;
                     align-items: flex-start;
+                    gap: 8px;
                 }
 
                 .top-actions {
                     flex-direction: column;
-                    gap: 7px;
+                    gap: 6px;
+                    flex-shrink: 0; /* jangan sampai tombol terpotong */
                 }
 
                 .icon-btn {
-                    width: 42px;
-                    height: 42px;
-                    font-size: 1.05rem;
+                    width: 40px;
+                    height: 40px;
+                    font-size: 1rem;
                 }
 
                 .ctrl-btn {
-                    height: 44px;
-                    font-size: 0.73rem;
+                    height: 42px;
+                    font-size: 0.7rem;
                     border-radius: 10px;
+                    padding: 0 4px;
                 }
 
                 .control-strip {
-                    gap: 6px;
+                    gap: 5px;
+                    max-width: 100%;
                 }
 
                 .gesture-hint {
-                    font-size: 0.7rem;
+                    font-size: 0.68rem;
+                    padding: 5px 10px;
+                }
+
+                /* Tambah padding bawah untuk Android navigation bar */
+                #hud {
+                    padding-bottom: calc(
+                        env(safe-area-inset-bottom, 0px) + 28px
+                    );
                 }
             }
 
             @media (max-width: 360px) {
                 #hud {
-                    padding-left: 10px;
-                    padding-right: 10px;
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    padding-bottom: calc(
+                        env(safe-area-inset-bottom, 0px) + 28px
+                    );
+                }
+
+                .info-panel {
+                    max-width: calc(100% - 52px);
+                }
+
+                .icon-btn {
+                    width: 38px;
+                    height: 38px;
+                    font-size: 0.95rem;
                 }
 
                 .ctrl-btn {
-                    font-size: 0.68rem;
-                    height: 42px;
+                    font-size: 0.65rem;
+                    height: 40px;
                 }
 
                 .boot-card {
@@ -841,6 +932,8 @@
                     padding-bottom: calc(
                         env(safe-area-inset-bottom, 0px) + 8px
                     );
+                    padding-left: 10px;
+                    padding-right: 10px;
                 }
 
                 .gesture-hint {
