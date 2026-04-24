@@ -1,0 +1,71 @@
+{
+  "site": {
+    "title": "AR Experience Launcher",
+    "baseUrl": "https://USERNAME.github.io/ar-web-app"
+  },
+  "experiences": [
+    {
+      "id": "demo-hiro",
+      "title": "Demo Hiro Character",
+      "description": "QR membuka halaman ini, lalu marker Hiro memunculkan Character.glb dengan kontrol rotasi, skala, dan audio berbasis speech.",
+      "bootText": "Untuk demo cepat, buka halaman ini dari ponsel lalu arahkan kamera ke marker preset Hiro.",
+      "marker": {
+        "preset": "hiro",
+        "label": "Preset Hiro",
+        "printHint": "Gunakan marker preset Hiro dari dokumentasi AR.js atau tempel marker custom Anda pada kartu/poster yang sama dengan QR."
+      },
+      "model": {
+        "src": "models/Character.glb",
+        "position": "0 0.5 0",
+        "rotation": "0 0 0",
+        "scale": "0.8 0.8 0.8",
+        "animationMixer": true
+      },
+      "audio": {
+        "speechText": "Selamat datang di demo AR Hiro. Objek tiga dimensi sudah tampil di atas marker.",
+        "lang": "id-ID",
+        "autoplayOnMarker": true,
+        "pauseOnMarkerLost": false
+      },
+      "interaction": {
+        "rotateStep": 15,
+        "scaleStep": 0.15,
+        "minScale": 0.4,
+        "maxScale": 2.4,
+        "autoRotate": false
+      }
+    },
+    {
+      "id": "demo-kanji",
+      "title": "Demo Kanji Auto Rotate",
+      "description": "Experience kedua dengan marker preset Kanji dan auto-rotate aktif. Cocok sebagai contoh menambah QR dan marker lain.",
+      "bootText": "Buka dari perangkat mobile, izinkan kamera, lalu arahkan ke marker preset Kanji.",
+      "marker": {
+        "preset": "kanji",
+        "label": "Preset Kanji",
+        "printHint": "Siapkan marker preset Kanji dari dokumentasi AR.js agar experience ini dapat dideteksi."
+      },
+      "model": {
+        "src": "models/Character.glb",
+        "position": "0 0.35 0",
+        "rotation": "0 30 0",
+        "scale": "0.65 0.65 0.65",
+        "animationMixer": true
+      },
+      "audio": {
+        "speechText": "Ini adalah demo Kanji. Anda bisa menambah file audio MP3 sendiri di folder audio.",
+        "lang": "id-ID",
+        "autoplayOnMarker": false,
+        "pauseOnMarkerLost": false
+      },
+      "interaction": {
+        "rotateStep": 20,
+        "scaleStep": 0.1,
+        "minScale": 0.5,
+        "maxScale": 2.1,
+        "autoRotate": true,
+        "autoRotateStep": 0.5
+      }
+    }
+  ]
+}

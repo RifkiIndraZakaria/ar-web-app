@@ -1,7 +1,7 @@
 {
   "name": "ar-web-app",
   "version": "1.0.0",
-  "description": "Web-based AR application with 3D objects, audio, and interactivity",
+  "description": "Marker-based AR launcher with QR entry points, 3D models, audio, and GitHub Pages deployment",
   "main": "index.js",
   "scripts": {
     "serve": "npx http-server public -p 8080 -c-1",
@@ -13,7 +13,10 @@
     "QR",
     "3D",
     "Web",
-    "Interactive"
+    "Interactive",
+    "A-Frame",
+    "AR.js",
+    "GitHub Pages"
   ],
   "author": "",
   "license": "MIT",
