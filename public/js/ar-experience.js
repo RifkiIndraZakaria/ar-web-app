@@ -1,6 +1,7 @@
 /* ══════════════════════════════════════════════════════════════════════
-   ar-experience.js  –  AR Experience core logic
-   Robust, mobile-friendly, GitHub Pages deployment ready
+   ar-experience.js  –  WebXR Markerless AR (A-Frame + ar-hit-test)
+   Menggantikan AR.js marker-based dengan WebXR surface tracking.
+   Pengguna mengarahkan HP ke lantai/meja → reticle muncul → tap = letakkan objek.
    ES2020 – no classes, no TypeScript
    ══════════════════════════════════════════════════════════════════════ */
 "use strict";
@@ -9,28 +10,24 @@
 const state = {
   experience: null,
   scene: null,
-  markerElement: null,
-  modelElement: null,
-  audioElement: null,
+  modelEntity: null, // <a-entity> model yang ditempatkan
+  reticleEntity: null, // reticle (indikator lantai)
   currentScale: 1,
   baseScale: 1,
   baseRotationY: 0,
   currentRotationY: 0,
-  markerVisible: false,
-  placed: false, // true setelah marker pertama kali terdeteksi
+  placed: false, // true setelah objek diletakkan
   userStarted: false,
   speechActive: false,
-  cameraReady: false,
-  rafId: null,
+  audioElement: null,
   touch: { lastDist: null, lastX: null, lastY: null },
-  previewStream: null,
+  xrSession: null,
 };
 
 // ─── TINY HELPERS ───────────────────────────────────────────────────────────
 function qs(sel) {
   return document.querySelector(sel);
 }
-
 function clamp(v, lo, hi) {
   return Math.min(hi, Math.max(lo, v));
 }
@@ -65,7 +62,9 @@ async function fetchExperience() {
   }
   const data = await res.json();
   const id = getExperienceId();
-  const exp = (data.experiences || []).find((e) => e.id === id);
+  const exp = (data.experiences || []).find(function (e) {
+    return e.id === id;
+  });
   if (!exp) {
     throw new Error(`Experience "${id}" tidak ditemukan dalam data.`);
   }
@@ -74,7 +73,7 @@ async function fetchExperience() {
 
 // ─── UI / STATUS ────────────────────────────────────────────────────────────
 function setStatus(msg, tone) {
-  if (tone === undefined) tone = "";
+  tone = tone || "";
   const pill = qs("#status-line");
   if (!pill) return;
   pill.className = ["status-pill", tone].filter(Boolean).join(" ");
@@ -117,35 +116,240 @@ function hideBoot() {
   if (overlay) overlay.classList.add("hidden");
 }
 
-function getCameraError(err) {
-  if (!window.isSecureContext && window.location.hostname !== "localhost") {
-    return "Halaman harus dibuka melalui HTTPS atau localhost. Buka melalui GitHub Pages atau server HTTPS.";
+// ─── PERIKSA DUKUNGAN WEBXR ─────────────────────────────────────────────────
+async function checkWebXRSupport() {
+  if (!window.isSecureContext) {
+    throw new Error("Halaman harus dibuka melalui HTTPS atau localhost.");
   }
-  if (!navigator.mediaDevices) {
-    return "Browser ini tidak mendukung API kamera. Gunakan Chrome atau Safari versi terbaru.";
+  if (!navigator.xr) {
+    throw new Error(
+      "Browser ini tidak mendukung WebXR. Gunakan Chrome 81+ di Android.",
+    );
   }
-  switch (err && err.name) {
-    case "NotAllowedError":
-    case "PermissionDeniedError":
-      return "Izin kamera ditolak. Buka pengaturan browser dan izinkan akses kamera untuk situs ini.";
-    case "NotFoundError":
-    case "DevicesNotFoundError":
-      return "Tidak ada kamera yang tersedia pada perangkat ini.";
-    case "NotReadableError":
-    case "TrackStartError":
-      return "Kamera sedang dipakai aplikasi lain atau gagal diakses. Tutup aplikasi lain lalu coba lagi.";
-    case "OverconstrainedError":
-      return "Konfigurasi kamera tidak dapat dipenuhi oleh perangkat ini.";
-    default:
-      return (
-        (err && err.message) ||
-        "Gagal memulai AR. Pastikan kamera tersedia dan izin diberikan."
-      );
+  const supported = await navigator.xr.isSessionSupported("immersive-ar");
+  if (!supported) {
+    throw new Error(
+      "Perangkat ini tidak mendukung WebXR AR. Pastikan ARCore (Android) atau ARKit (iOS) terinstal.",
+    );
   }
 }
 
+// ─── DAFTAR KOMPONEN AFRAME CUSTOM ─────────────────────────────────────────
+
+/**
+ * Komponen ar-hit-test-handler
+ * Mengelola reticle dari hit-test WebXR dan penempatan objek saat tap.
+ */
+function registerARComponents() {
+  if (!window.AFRAME) return;
+
+  // Komponen reticle — lingkaran di permukaan yang terdeteksi
+  AFRAME.registerComponent("webxr-reticle", {
+    schema: {},
+    init: function () {
+      this.reticleEl = this.el;
+      this.el.setAttribute("visible", false);
+    },
+    show: function (position) {
+      this.reticleEl.setAttribute("position", position);
+      this.reticleEl.setAttribute("visible", true);
+    },
+    hide: function () {
+      this.reticleEl.setAttribute("visible", false);
+    },
+  });
+
+  // Komponen utama hit-test
+  AFRAME.registerComponent("ar-hit-test-manager", {
+    schema: {
+      modelSrc: { type: "string", default: "" },
+      modelScale: { type: "string", default: "0.8 0.8 0.8" },
+      modelRotation: { type: "string", default: "0 0 0" },
+      modelPosition: { type: "string", default: "0 0 0" },
+      animMixer: { type: "boolean", default: true },
+    },
+
+    init: function () {
+      const self = this;
+      self.hitTestSource = null;
+      self.hitTestSourceRequested = false;
+      self.reticleEl = null;
+      self.modelEl = null;
+      self.placed = false;
+
+      // Bangun reticle
+      const reticle = document.createElement("a-entity");
+      reticle.setAttribute("id", "ar-reticle");
+      reticle.setAttribute("geometry", {
+        primitive: "ring",
+        radiusInner: 0.04,
+        radiusOuter: 0.06,
+      });
+      reticle.setAttribute("material", {
+        color: "#f97316",
+        shader: "flat",
+        side: "double",
+        opacity: 0.9,
+      });
+      reticle.setAttribute("rotation", "-90 0 0");
+      reticle.setAttribute("visible", false);
+      self.el.sceneEl.appendChild(reticle);
+      self.reticleEl = reticle;
+
+      // Animasi pulse pada reticle via A-Frame animation
+      reticle.setAttribute("animation__scale", {
+        property: "scale",
+        from: "1 1 1",
+        to: "1.15 1.15 1.15",
+        dir: "alternate",
+        dur: 700,
+        loop: true,
+        easing: "easeInOutSine",
+      });
+
+      // Bangun entity model (tersembunyi sampai ditempatkan)
+      const modelEl = document.createElement("a-entity");
+      modelEl.setAttribute("id", "experience-model");
+      modelEl.setAttribute("gltf-model", "url(" + self.data.modelSrc + ")");
+      modelEl.setAttribute("scale", self.data.modelScale);
+      modelEl.setAttribute("rotation", self.data.modelRotation);
+      modelEl.setAttribute("visible", false);
+      if (self.data.animMixer) {
+        modelEl.setAttribute("animation-mixer", "");
+      }
+      modelEl.addEventListener("model-loaded", function () {
+        setStatus(
+          "Model dimuat ✓ — Arahkan ke lantai/meja lalu tap untuk meletakkan.",
+          "success",
+        );
+      });
+      modelEl.addEventListener("model-error", function () {
+        setStatus("Model gagal dimuat.", "error");
+      });
+      self.el.sceneEl.appendChild(modelEl);
+      self.modelEl = modelEl;
+
+      // Simpan referensi ke state global
+      state.reticleEntity = reticle;
+      state.modelEntity = modelEl;
+
+      // Tap/click = letakkan objek di posisi reticle
+      self.el.sceneEl.canvas.addEventListener("click", function () {
+        self.onTap();
+      });
+      self.el.sceneEl.canvas.addEventListener("touchend", function (e) {
+        if (e.changedTouches.length === 1) {
+          self.onTap();
+        }
+      });
+    },
+
+    onTap: function () {
+      if (!this.reticleEl || !this.reticleEl.getAttribute("visible")) return;
+      if (!this.modelEl) return;
+
+      const pos = this.reticleEl.getAttribute("position");
+      this.modelEl.setAttribute("position", pos);
+      this.modelEl.setAttribute("visible", true);
+
+      if (!this.placed) {
+        this.placed = true;
+        state.placed = true;
+        setStatus("✓ Objek berhasil diletakkan!", "success");
+        autoplayAudio("marker");
+
+        // Indikator "placed"
+        const ind = qs("#marker-indicator");
+        if (ind) ind.classList.add("found");
+        setTimeout(function () {
+          const ind2 = qs("#marker-indicator");
+          if (ind2) ind2.classList.remove("found");
+        }, 2000);
+      } else {
+        // Pindahkan objek ke posisi baru
+        setStatus("Objek dipindahkan ✓", "success");
+      }
+    },
+
+    tick: function () {
+      const scene = this.el.sceneEl;
+      const renderer = scene.renderer;
+      if (!renderer) return;
+
+      const xrFrame =
+        renderer.xr && renderer.xr.getFrame ? renderer.xr.getFrame() : null;
+      if (!xrFrame) return;
+
+      const session = renderer.xr.getSession();
+      if (!session) return;
+
+      // Minta hit-test source sekali
+      if (!this.hitTestSourceRequested) {
+        this.hitTestSourceRequested = true;
+        const self = this;
+        session
+          .requestReferenceSpace("viewer")
+          .then(function (refSpace) {
+            session
+              .requestHitTestSource({ space: refSpace })
+              .then(function (src) {
+                self.hitTestSource = src;
+              })
+              .catch(function (err) {
+                console.warn(
+                  "[ar-hit-test] Gagal request hit test source:",
+                  err,
+                );
+              });
+          })
+          .catch(function (err) {
+            console.warn("[ar-hit-test] Gagal request reference space:", err);
+          });
+
+        session.addEventListener("end", function () {
+          self.hitTestSourceRequested = false;
+          self.hitTestSource = null;
+        });
+      }
+
+      if (!this.hitTestSource) return;
+
+      const referenceSpace = renderer.xr.getReferenceSpace();
+      if (!referenceSpace) return;
+
+      const hitTestResults = xrFrame.getHitTestResults(this.hitTestSource);
+      if (hitTestResults.length > 0) {
+        const hit = hitTestResults[0];
+        const pose = hit.getPose(referenceSpace);
+        if (pose) {
+          const m = pose.transform.matrix;
+          const position = {
+            x: m[12],
+            y: m[13],
+            z: m[14],
+          };
+          this.reticleEl.setAttribute("position", position);
+          this.reticleEl.setAttribute("visible", true);
+
+          if (!this.placed) {
+            setStatus(
+              "Permukaan terdeteksi — Tap layar untuk meletakkan objek.",
+              "success",
+            );
+          }
+        }
+      } else {
+        if (!this.placed) {
+          this.reticleEl.setAttribute("visible", false);
+          setStatus("Arahkan kamera ke lantai atau meja yang datar…", "");
+        }
+      }
+    },
+  });
+}
+
 // ─── SCENE BUILDING ─────────────────────────────────────────────────────────
-function buildScene() {
+function buildScene(exp) {
   let host = qs("#scene-host");
   if (!host) {
     host = document.createElement("div");
@@ -153,264 +357,61 @@ function buildScene() {
     document.body.prepend(host);
   }
 
+  const m = exp.model || {};
+
   const scene = document.createElement("a-scene");
   scene.setAttribute("embedded", "");
   scene.setAttribute("loading-screen", "enabled: false");
-  scene.setAttribute(
-    "renderer",
-    "antialias: true; alpha: true; logarithmicDepthBuffer: true;",
-  );
+  scene.setAttribute("renderer", "antialias: true; alpha: true;");
   scene.setAttribute("vr-mode-ui", "enabled: false");
-  scene.setAttribute("device-orientation-permission-ui", "enabled: false");
-  scene.setAttribute(
-    "arjs",
-    "sourceType: webcam; videoTexture: false; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;",
-  );
-
-  // Wajib: A-Frame background component defaultnya opaque hitam,
-  // ini yang menyebabkan layar hitam di belakang AR.js video.
-  // transparent: true membuat canvas WebGL benar-benar transparan
-  // sehingga video kamera di belakangnya terlihat.
   scene.setAttribute("background", "transparent: true");
 
-  const assets = document.createElement("a-assets");
-  assets.setAttribute("timeout", "10000");
-  scene.appendChild(assets);
+  // WebXR immersive-ar dengan hit-test feature
+  scene.setAttribute(
+    "webxr",
+    "optionalFeatures: hit-test, local-floor; requiredFeatures: hit-test;",
+  );
 
-  const camera = document.createElement("a-entity");
-  camera.setAttribute("camera", "");
-  scene.appendChild(camera);
+  // Lighting ambient + directional agar model terlihat baik
+  const ambient = document.createElement("a-light");
+  ambient.setAttribute("type", "ambient");
+  ambient.setAttribute("color", "#ffffff");
+  ambient.setAttribute("intensity", "0.8");
+  scene.appendChild(ambient);
 
-  scene.addEventListener("camera-error", function (evt) {
-    const msg = getCameraError((evt && evt.detail) || evt);
-    setStatus(msg, "error");
+  const dirLight = document.createElement("a-light");
+  dirLight.setAttribute("type", "directional");
+  dirLight.setAttribute("color", "#ffffff");
+  dirLight.setAttribute("intensity", "0.6");
+  dirLight.setAttribute("position", "1 3 2");
+  scene.appendChild(dirLight);
+
+  // Entity manager untuk hit-test
+  const manager = document.createElement("a-entity");
+  manager.setAttribute("ar-hit-test-manager", {
+    modelSrc: m.src || "",
+    modelScale: m.scale || "0.8 0.8 0.8",
+    modelRotation: m.rotation || "0 0 0",
+    modelPosition: m.position || "0 0 0",
+    animMixer: m.animationMixer !== false,
   });
+  scene.appendChild(manager);
 
   host.replaceChildren(scene);
   state.scene = scene;
-  return scene;
-}
 
-function waitForSceneLoad(scene, timeoutMs) {
-  if (timeoutMs === undefined) timeoutMs = 8000;
-
-  return new Promise(function (resolve, reject) {
-    if (!window.AFRAME) {
-      reject(
-        new Error(
-          "Library A-Frame gagal dimuat. Periksa koneksi internet atau CDN.",
-        ),
-      );
-      return;
-    }
-
-    if (!window.AFRAME.systems || !window.AFRAME.systems.arjs) {
-      reject(
-        new Error(
-          "Library AR.js gagal dimuat. Pastikan file vendor/arjs/aframe-ar.js tersedia lalu refresh halaman.",
-        ),
-      );
-      return;
-    }
-
-    if (!scene) {
-      reject(new Error("Scene AR tidak ditemukan."));
-      return;
-    }
-
-    if (scene.hasLoaded || scene.renderStarted) return resolve(true);
-
-    let done = false;
-    const timeout = setTimeout(function () {
-      if (done) return;
-      done = true;
-      resolve(false);
-    }, timeoutMs);
-
-    function finish() {
-      if (done) return;
-      done = true;
-      clearTimeout(timeout);
-      resolve(true);
-    }
-
-    scene.addEventListener("loaded", finish, { once: true });
-    scene.addEventListener("renderstart", finish, { once: true });
-  });
-}
-
-function waitForCameraVideo(timeoutMs) {
-  if (timeoutMs === undefined) timeoutMs = 15000;
-  return new Promise(function (resolve, reject) {
-    const deadline = Date.now() + timeoutMs;
-    let done = false;
-    let listenerAttached = false;
-
-    function finish(v) {
-      if (done) return;
-      done = true;
-      state.cameraReady = true;
-      resolve(v);
-    }
-
-    function poll() {
-      if (done) return;
-
-      if (Date.now() >= deadline) {
-        if (!done) {
-          done = true;
-          reject(new Error("Timeout menunggu video kamera"));
-        }
-        return;
-      }
-
-      // Dengan videoTexture: false, AR.js membuat elemen video DOM.
-      // Deteksi lewat dua jalur:
-      // 1) video DOM yang masih playing (readyState >= 2, tidak paused)
-      // 2) event playing/loadeddata dari video AR.js
-      const v = document.querySelector("video:not(#camera-preview)");
-      if (v) {
-        // Video mungkin tersembunyi (display:none) tapi stream tetap aktif
-        if (v.readyState >= 2 && v.srcObject) {
-          return finish(v);
-        }
-        if (!listenerAttached) {
-          listenerAttached = true;
-          v.addEventListener(
-            "playing",
-            function () {
-              finish(v);
-            },
-            { once: true },
-          );
-          v.addEventListener(
-            "loadeddata",
-            function () {
-              finish(v);
-            },
-            { once: true },
-          );
-        }
-      }
-
-      setTimeout(poll, 300);
-    }
-
-    poll();
-  });
-}
-
-// ─── MARKER & MODEL ─────────────────────────────────────────────────────────
-function getMarkerAttrs(cfg) {
-  if (cfg.preset) {
-    return { preset: cfg.preset };
-  }
-  if (cfg.type === "barcode") {
-    return { type: "barcode", value: String(cfg.value) };
-  }
-  if (cfg.type === "pattern") {
-    return { type: "pattern", url: cfg.patternUrl };
-  }
-  throw new Error(
-    "Marker config tidak valid. Gunakan preset, barcode, atau pattern.",
-  );
-}
-
-function buildMarkerScene(exp) {
-  if (!state.scene) return;
-
-  if (state.markerElement) {
-    state.markerElement.remove();
-    state.markerElement = null;
-    state.modelElement = null;
-  }
-
-  const marker = document.createElement("a-marker");
-  const attrs = getMarkerAttrs(exp.marker || {});
-  Object.entries(attrs).forEach(function (pair) {
-    marker.setAttribute(pair[0], pair[1]);
-  });
-
-  marker.setAttribute("emitevents", "true");
-  marker.setAttribute("smooth", "true");
-  marker.setAttribute("smoothCount", 10);
-  marker.setAttribute("smoothTolerance", 0.01);
-  marker.setAttribute("smoothThreshold", 2);
-
-  const m = exp.model || {};
-  const entity = document.createElement("a-entity");
-  entity.setAttribute("id", "experience-model");
-  entity.setAttribute("gltf-model", "url(" + m.src + ")");
-  entity.setAttribute("position", m.position || "0 0.5 0");
-  entity.setAttribute("rotation", m.rotation || "0 0 0");
-  entity.setAttribute("scale", m.scale || "1 1 1");
-
-  if (m.animationMixer !== false) {
-    entity.setAttribute("animation-mixer", "");
-  }
-
-  entity.addEventListener("model-loaded", function () {
-    setStatus("Model dimuat. Arahkan ke marker.", "success");
-  });
-  entity.addEventListener("model-error", function () {
-    setStatus("Model gagal dimuat.", "error");
-  });
-
-  marker.appendChild(entity);
-  state.scene.appendChild(marker);
-
-  state.markerElement = marker;
-  state.modelElement = entity;
+  // Base values untuk transform
   state.baseScale = parseScaleX(m.scale);
   state.currentScale = state.baseScale;
   state.baseRotationY = parseRotY(m.rotation);
   state.currentRotationY = state.baseRotationY;
 
-  marker.addEventListener("markerFound", function () {
-    state.markerVisible = true;
-    const ind = qs("#marker-indicator");
-    if (ind) ind.classList.add("found");
-
-    if (!state.placed) {
-      // Deteksi pertama kali — tandai object sudah "terpasang"
-      state.placed = true;
-      setStatus("✓ Objek terpasang! Marker bisa dijauhkan.", "success");
-    } else {
-      setStatus("✓ Marker terdeteksi!", "success");
-    }
-
-    autoplayAudio("marker");
-  });
-
-  marker.addEventListener("markerLost", function () {
-    state.markerVisible = false;
-    const ind = qs("#marker-indicator");
-    if (ind) ind.classList.remove("found");
-
-    if (state.placed) {
-      // Object sudah pernah muncul — override AR.js yang menyembunyikan
-      // object saat marker hilang. rAF memastikan override berjalan
-      // setelah AR.js selesai set object3D.visible = false.
-      requestAnimationFrame(function () {
-        if (state.markerElement) {
-          state.markerElement.object3D.visible = true;
-        }
-      });
-      setStatus("Objek terpasang di permukaan. ✓", "success");
-    } else {
-      // Belum pernah terdeteksi sama sekali
-      setStatus("Arahkan kamera ke marker.", "");
-    }
-
-    if (exp.audio && exp.audio.pauseOnMarkerLost && state.audioElement) {
-      state.audioElement.pause();
-    }
-  });
+  return scene;
 }
 
 // ─── TRANSFORM ──────────────────────────────────────────────────────────────
 function applyTransform() {
-  if (!state.modelElement || !state.experience) return;
+  if (!state.modelEntity || !state.experience) return;
   const rot = (
     (state.experience.model && state.experience.model.rotation) ||
     "0 0 0"
@@ -418,8 +419,8 @@ function applyTransform() {
   const rx = rot[0] || "0";
   const rz = rot[2] || "0";
   const s = state.currentScale;
-  state.modelElement.setAttribute("scale", s + " " + s + " " + s);
-  state.modelElement.setAttribute(
+  state.modelEntity.setAttribute("scale", s + " " + s + " " + s);
+  state.modelEntity.setAttribute(
     "rotation",
     rx + " " + state.currentRotationY + " " + rz,
   );
@@ -522,8 +523,12 @@ function bindTouchGestures() {
       } else if (e.touches.length === 1) {
         state.touch.lastX = e.touches[0].clientX;
         state.touch.lastY = e.touches[0].clientY;
+
         const now = Date.now();
-        if (now - lastTapTime < 300) resetTransform();
+        if (now - lastTapTime < 300) {
+          // Double tap = reset transform
+          resetTransform();
+        }
         lastTapTime = now;
       }
     },
@@ -533,7 +538,7 @@ function bindTouchGestures() {
   host.addEventListener(
     "touchmove",
     function (e) {
-      if (!state.experience) return;
+      if (!state.experience || !state.placed) return;
       const ia = state.experience.interaction || {};
       const min = Number(ia.minScale || 0.4);
       const max = Number(ia.maxScale || 2.4);
@@ -572,107 +577,27 @@ function bindTouchGestures() {
   );
 }
 
-// ─── ANIMATION LOOP ─────────────────────────────────────────────────────────
-function startLoop() {
-  function step() {
-    const ia = (state.experience && state.experience.interaction) || {};
-    if (state.markerVisible && state.modelElement && ia.autoRotate) {
-      state.currentRotationY += Number(ia.autoRotateStep || 0.6);
-      applyTransform();
-    }
-    state.rafId = requestAnimationFrame(step);
-  }
-  state.rafId = requestAnimationFrame(step);
-}
-
 // ─── CLEANUP ────────────────────────────────────────────────────────────────
-// ─── CAMERA PREVIEW ─────────────────────────────────────────────────────────
-// Mulai preview kamera langsung dari getUserMedia ke <video id="camera-preview">
-// sebelum AR.js scene dibangun. Membuat layar tidak hitam saat halaman terbuka.
-async function startCameraPreview() {
-  const preview = qs("#camera-preview");
-  if (!preview) return;
-
-  // Butuh konteks aman dan mediaDevices
-  if (!window.isSecureContext && location.hostname !== "localhost") return;
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-
-  // Jangan start ulang jika sudah ada stream
-  if (state.previewStream) return;
-
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: "environment" }, // kamera belakang di HP
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-      audio: false,
-    });
-
-    state.previewStream = stream;
-    preview.srcObject = stream;
-
-    // Tunggu video siap lalu tampilkan
-    await new Promise(function (resolve) {
-      preview.onloadedmetadata = resolve;
-      // fallback jika event tidak muncul
-      setTimeout(resolve, 1500);
-    });
-
-    preview.play().catch(function () {});
-    preview.classList.remove("hidden");
-  } catch (err) {
-    // Izin ditolak atau tidak ada kamera — biarkan layar hitam, tidak crash
-    console.warn("[preview] Kamera preview gagal:", err.message);
-  }
-}
-
-// Hentikan preview stream dan sembunyikan elemen video
-function stopCameraPreview() {
-  if (state.previewStream) {
-    state.previewStream.getTracks().forEach(function (track) {
-      track.stop();
-    });
-    state.previewStream = null;
-  }
-
-  const preview = qs("#camera-preview");
-  if (preview) {
-    preview.srcObject = null;
-    preview.classList.add("hidden");
-  }
-}
-
 function cleanup() {
-  if (state.rafId) {
-    cancelAnimationFrame(state.rafId);
-    state.rafId = null;
-  }
-  document.querySelectorAll("video").forEach(function (v) {
-    if (v.srcObject) {
-      v.srcObject.getTracks().forEach(function (t) {
-        t.stop();
-      });
-      v.srcObject = null;
-    }
-  });
   if (state.audioElement) {
     state.audioElement.pause();
   }
   if ("speechSynthesis" in window) {
     window.speechSynthesis.cancel();
   }
-  state.cameraReady = false;
+  // Akhiri sesi WebXR jika masih aktif
+  if (state.xrSession) {
+    state.xrSession.end().catch(function () {});
+    state.xrSession = null;
+  }
 }
 
 // ─── UI BINDING ─────────────────────────────────────────────────────────────
 function bindUI() {
-  // Lifecycle cleanup
   window.addEventListener("pagehide", cleanup);
   window.addEventListener("beforeunload", cleanup);
 
-  // ── Toggle info panel ──────────────────────────────────────────────
+  // Toggle info panel
   const toggleBtn = qs("#toggle-panel");
   const infoPanel = qs("#info-panel");
   if (toggleBtn && infoPanel) {
@@ -680,11 +605,11 @@ function bindUI() {
       infoPanel.classList.toggle("collapsed");
       toggleBtn.textContent = infoPanel.classList.contains("collapsed")
         ? "+"
-        : "\u2212";
+        : "−";
     });
   }
 
-  // ── Audio button ───────────────────────────────────────────────────
+  // Audio button
   const playAudioBtn = qs("#play-audio");
   if (playAudioBtn) {
     playAudioBtn.addEventListener("click", function () {
@@ -692,20 +617,23 @@ function bindUI() {
     });
   }
 
-  // ── Marker help ────────────────────────────────────────────────────
+  // Info hint button (ganti marker-help jadi placement-hint)
   const markerHelpBtn = qs("#marker-help");
   if (markerHelpBtn) {
     markerHelpBtn.addEventListener("click", function () {
-      const hint =
-        (state.experience &&
-          state.experience.marker &&
-          state.experience.marker.printHint) ||
-        "Siapkan marker yang sesuai dan arahkan kamera ke marker tersebut.";
-      window.alert(hint);
+      window.alert(
+        "Cara meletakkan objek:\n\n" +
+          "1. Arahkan kamera ke lantai atau meja yang datar dan rata.\n" +
+          "2. Tunggu hingga lingkaran oranye (reticle) muncul di permukaan.\n" +
+          "3. Tap layar untuk meletakkan objek 3D di sana.\n" +
+          "4. Tap lagi untuk memindahkan ke tempat lain.\n" +
+          "5. Cubit untuk mengubah ukuran, geser untuk memutar.\n" +
+          "6. Ketuk dua kali cepat untuk reset ukuran & rotasi.",
+      );
     });
   }
 
-  // ── Control strip buttons ──────────────────────────────────────────
+  // Control strip
   document.querySelectorAll("[data-action]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       const ia = (state.experience && state.experience.interaction) || {};
@@ -745,99 +673,77 @@ function bindUI() {
     });
   });
 
-  // ── Start AR button ────────────────────────────────────────────────
+  // Start AR button
   const startBtn = qs("#start-ar");
   if (!startBtn) return;
 
   startBtn.addEventListener("click", async function () {
     startBtn.disabled = true;
     const btnLabel = startBtn.querySelector("span:last-child");
-    if (btnLabel) btnLabel.textContent = "Memulai\u2026";
+    if (btnLabel) btnLabel.textContent = "Memulai…";
 
     try {
-      // Validate context + API availability
-      if (!window.isSecureContext) {
-        const e = new Error("Bukan konteks aman (non-HTTPS)");
-        e.name = "SecurityError";
-        throw e;
-      }
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        const e = new Error("navigator.mediaDevices tidak tersedia");
-        e.name = "NotSupportedError";
-        throw e;
-      }
-
-      showLoading("Membangun scene AR\u2026");
+      showLoading("Memeriksa dukungan WebXR…");
       hideBoot();
+
+      await checkWebXRSupport();
 
       if (!window.AFRAME) {
         throw new Error(
-          "Library A-Frame gagal dimuat. Pastikan perangkat terhubung internet lalu refresh halaman.",
+          "Library A-Frame gagal dimuat. Periksa koneksi internet lalu refresh.",
         );
       }
 
-      if (!window.AFRAME.systems || !window.AFRAME.systems.arjs) {
-        throw new Error(
-          "Library AR.js gagal dimuat. Pastikan file vendor/arjs/aframe-ar.js tersedia lalu refresh halaman.",
-        );
-      }
+      registerARComponents();
 
-      stopCameraPreview();
-      setStatus("Mengalihkan kamera ke AR\u2026");
-      await sleep(350);
+      showLoading("Membangun scene AR…");
+      setStatus("Membangun scene…");
+      await sleep(300);
 
-      const scene = buildScene();
-      buildMarkerScene(state.experience);
+      buildScene(state.experience);
       setupAudio(state.experience);
 
-      const sceneReady = await waitForSceneLoad(scene, 8000);
-      if (!sceneReady) {
-        setStatus("Scene AR masih menyiapkan kamera\u2026");
-      }
-
       state.userStarted = true;
-      startLoop();
       bindTouchGestures();
 
-      // Reveal HUD
+      // Tampilkan HUD
       const hud = qs("#hud");
       if (hud) hud.classList.remove("hidden");
 
-      // Auto-collapse info panel di layar kecil (Android mobile)
-      // agar kamera terlihat lebih luas setelah AR aktif
+      // Auto-collapse panel di HP kecil
       if (window.innerWidth <= 480) {
-        const infoPanel = qs("#info-panel");
-        const toggleBtn = qs("#toggle-panel");
-        if (infoPanel) infoPanel.classList.add("collapsed");
-        if (toggleBtn) toggleBtn.textContent = "+";
+        const ip = qs("#info-panel");
+        const tb = qs("#toggle-panel");
+        if (ip) ip.classList.add("collapsed");
+        if (tb) tb.textContent = "+";
       }
 
-      setStatus("Menunggu video kamera\u2026");
-
-      try {
-        await waitForCameraVideo(30000);
-        // AR.js stream sudah aktif — lepas preview untuk hemat sumber daya
-        stopCameraPreview();
-        setStatus("Kamera aktif \u2014 arahkan ke marker.", "success");
-      } catch (_) {
-        stopCameraPreview();
-        await startCameraPreview();
-        setStatus(
-          "Kamera AR belum aktif. Tutup tab lain yang memakai kamera lalu coba Mulai AR lagi.",
-          "error",
-        );
+      // Update gesture hint untuk WebXR
+      const gestureHint = qs(".gesture-hint");
+      if (gestureHint) {
+        gestureHint.textContent =
+          "Tap: letakkan  |  Cubit: skala  |  Geser: putar  |  Ketuk 2×: reset";
       }
 
       hideLoading();
+      setStatus("Arahkan kamera ke lantai atau meja…", "");
       autoplayAudio("start");
+
+      // Lacak sesi XR untuk cleanup
+      if (state.scene) {
+        state.scene.addEventListener("enter-vr", function () {
+          const renderer = state.scene.renderer;
+          if (renderer && renderer.xr) {
+            state.xrSession = renderer.xr.getSession();
+          }
+        });
+      }
     } catch (err) {
       hideLoading();
       showBoot();
-      await startCameraPreview();
-      const msg = getCameraError(err);
-      setStatus(msg, "error");
+      setStatus(err.message, "error");
       const btxt = qs("#boot-text");
-      if (btxt) btxt.textContent = msg;
+      if (btxt) btxt.textContent = err.message;
     } finally {
       startBtn.disabled = false;
       if (btnLabel) btnLabel.textContent = "Mulai AR";
@@ -849,24 +755,52 @@ function bindUI() {
 async function main() {
   try {
     bindUI();
-    setStatus("Memuat konfigurasi\u2026");
+    setStatus("Memuat konfigurasi…");
 
     state.experience = await fetchExperience();
     setPageCopy(state.experience);
-    setStatus("Siap. Tekan Mulai AR.");
+
+    // Sesuaikan teks boot untuk WebXR
+    const bootSteps = document.querySelectorAll(".boot-step");
+    const stepDescs = [
+      'Tekan "Mulai AR" lalu izinkan akses kamera saat browser meminta.',
+      "Arahkan kamera ke lantai atau meja yang datar hingga lingkaran oranye muncul.",
+      "Tap layar untuk meletakkan objek 3D. Cubit untuk skala, geser untuk putar.",
+    ];
+    bootSteps.forEach(function (step, i) {
+      const titleEl = step.querySelector(".step-title");
+      const descEl = step.querySelector(".step-desc");
+      if (i === 0 && titleEl) titleEl.textContent = "Izinkan Kamera";
+      if (i === 1 && titleEl) titleEl.textContent = "Arahkan ke Permukaan";
+      if (i === 2 && titleEl) titleEl.textContent = "Tap untuk Meletakkan";
+      if (descEl && stepDescs[i]) descEl.textContent = stepDescs[i];
+    });
 
     const startBtn = qs("#start-ar");
-    if (startBtn) startBtn.disabled = false;
 
     if (!window.isSecureContext) {
       setStatus(
-        "Halaman belum HTTPS/localhost \u2014 kamera tidak dapat diakses.",
+        "Halaman belum HTTPS/localhost — kamera tidak dapat diakses.",
         "error",
       );
       if (startBtn) startBtn.disabled = true;
+    } else if (!navigator.xr) {
+      setStatus(
+        "Browser tidak mendukung WebXR. Gunakan Chrome di Android.",
+        "error",
+      );
+      if (startBtn) {
+        startBtn.disabled = true;
+        const lbl = startBtn.querySelector("span:last-child");
+        if (lbl) lbl.textContent = "Tidak Didukung";
+      }
+      const btxt = qs("#boot-text");
+      if (btxt)
+        btxt.textContent =
+          "WebXR AR hanya tersedia di Chrome 81+ pada perangkat Android yang mendukung ARCore, atau Safari 15.4+ pada iPhone/iPad dengan ARKit.";
     } else {
-      // Mulai preview kamera langsung — layar tidak lagi hitam saat overlay terbuka
-      startCameraPreview();
+      setStatus("Siap. Tekan Mulai AR.");
+      if (startBtn) startBtn.disabled = false;
     }
   } catch (err) {
     setStatus(err.message, "error");

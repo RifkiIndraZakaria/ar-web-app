@@ -6,27 +6,21 @@
   "experiences": [
     {
       "id": "demo-hiro",
-      "title": "Demo Hiro — Character 3D",
-      "description": "Scan QR untuk membuka halaman ini, lalu arahkan kamera ke marker Hiro agar Character 3D muncul. Gunakan gestur sentuh atau tombol untuk berinteraksi.",
-      "bootText": "Siapkan marker Hiro (dapat diunduh dari AR.js docs). Scan marker dengan kamera setelah AR aktif.",
-      "marker": {
-        "preset": "hiro",
-        "label": "Preset Hiro",
-        "printHint": "Cetak atau tampilkan marker Hiro dari dokumentasi AR.js (https://ar-js-org.github.io/AR.js-Docs/). Arahkan kamera ke marker hitam-putih itu."
-      },
+      "title": "Demo WebXR — Character 3D",
+      "description": "Scan QR untuk membuka halaman ini, lalu arahkan kamera ke lantai atau meja. Ketika lingkaran oranye muncul, tap layar untuk meletakkan karakter 3D di dunia nyata.",
+      "bootText": "Pastikan lantai atau meja di depan Anda cukup terang dan tidak terlalu polos. Arahkan kamera perlahan-lahan hingga lingkaran reticle muncul, lalu tap untuk meletakkan objek.",
       "model": {
         "src": "models/Character.glb",
-        "position": "0 0.5 0",
+        "position": "0 0 0",
         "rotation": "0 0 0",
         "scale": "0.8 0.8 0.8",
         "animationMixer": true
       },
       "audio": {
-        "speechText": "Selamat datang di demo AR. Objek tiga dimensi kini tampil di atas marker Hiro. Gunakan gestur cubit untuk mengubah ukuran, atau geser untuk memutar.",
+        "speechText": "Selamat datang di demo AR tanpa marker. Objek tiga dimensi kini tampil di lantai di depan Anda. Gunakan gestur cubit untuk mengubah ukuran, atau geser untuk memutar.",
         "lang": "id-ID",
         "autoplayOnMarker": true,
         "autoplayOnStart": false,
-        "pauseOnMarkerLost": false,
         "loop": false,
         "volume": 0.9
       },
@@ -41,27 +35,21 @@
     },
     {
       "id": "demo-kanji",
-      "title": "Demo Kanji — Auto Rotate",
-      "description": "Experience dengan marker Kanji dan auto-rotate aktif. Model berputar otomatis saat marker terdeteksi. Cocok sebagai demo animasi AR.",
-      "bootText": "Siapkan marker Kanji dari AR.js. Arahkan kamera ke marker setelah AR aktif.",
-      "marker": {
-        "preset": "kanji",
-        "label": "Preset Kanji",
-        "printHint": "Cetak atau tampilkan marker Kanji dari dokumentasi AR.js. Marker ini berbeda dari Hiro — pastikan menggunakan yang benar."
-      },
+      "title": "Demo WebXR — Auto Rotate",
+      "description": "Experience WebXR dengan auto-rotate aktif. Model berputar otomatis setelah diletakkan di permukaan. Cocok sebagai demo animasi AR tanpa marker.",
+      "bootText": "Tidak perlu marker! Cukup arahkan kamera ke lantai atau meja hingga lingkaran oranye muncul, lalu tap untuk meletakkan objek yang akan berputar otomatis.",
       "model": {
         "src": "models/Character.glb",
-        "position": "0 0.35 0",
+        "position": "0 0 0",
         "rotation": "0 30 0",
         "scale": "0.65 0.65 0.65",
         "animationMixer": true
       },
       "audio": {
-        "speechText": "Demo Kanji aktif. Model berputar otomatis. Cubit layar untuk mengubah ukuran, atau gunakan tombol di bawah.",
+        "speechText": "Demo auto-rotate aktif. Model berputar otomatis setelah diletakkan. Cubit layar untuk mengubah ukuran, atau gunakan tombol di bawah.",
         "lang": "id-ID",
         "autoplayOnMarker": true,
         "autoplayOnStart": false,
-        "pauseOnMarkerLost": false,
         "loop": false,
         "volume": 0.9
       },
