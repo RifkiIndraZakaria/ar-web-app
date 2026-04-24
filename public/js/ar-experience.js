@@ -10,6 +10,7 @@ const state = {
   markerVisible: false,
   userStarted: false,
   speechActive: false,
+  cameraReady: false,
 };
 
 function getExperienceId() {
@@ -40,6 +41,59 @@ function setIntroCopy(experience) {
   document.getElementById("boot-text").textContent =
     experience.bootText ||
     "Pastikan marker yang sesuai sudah siap di depan kamera sebelum memulai.";
+}
+
+function getCameraErrorMessage(error) {
+  if (!window.isSecureContext && window.location.hostname !== "localhost") {
+    return "Kamera hanya bisa diakses lewat HTTPS atau localhost. Buka dari GitHub Pages, localhost, atau tunnel HTTPS.";
+  }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return "Browser ini tidak menyediakan API kamera yang dibutuhkan AR.";
+  }
+
+  switch (error?.name) {
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+      return "Izin kamera ditolak. Buka pengaturan browser lalu izinkan kamera untuk situs ini.";
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return "Tidak ada kamera yang tersedia di perangkat ini.";
+    case "NotReadableError":
+    case "TrackStartError":
+      return "Kamera sedang dipakai aplikasi lain atau gagal dibuka.";
+    case "OverconstrainedError":
+    case "ConstraintNotSatisfiedError":
+      return "Konfigurasi kamera tidak didukung perangkat ini.";
+    default:
+      return error?.message || "Gagal meminta akses kamera.";
+  }
+}
+
+async function requestCameraAccess() {
+  if (!window.isSecureContext && window.location.hostname !== "localhost") {
+    throw new Error(
+      "Halaman ini belum berada di konteks aman. Gunakan HTTPS atau localhost agar prompt kamera bisa muncul.",
+    );
+  }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    throw new Error(
+      "Browser ini tidak mendukung getUserMedia, jadi kamera AR tidak bisa dijalankan.",
+    );
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: {
+        ideal: "environment",
+      },
+    },
+    audio: false,
+  });
+
+  stream.getTracks().forEach((track) => track.stop());
+  state.cameraReady = true;
 }
 
 function createMarkerAttributes(markerConfig) {
@@ -315,11 +369,26 @@ function bindUi() {
     });
   });
 
-  document.getElementById("start-ar").addEventListener("click", () => {
-    state.userStarted = true;
-    document.getElementById("boot-overlay").classList.add("hidden");
-    setStatus("AR aktif. Izinkan kamera lalu arahkan ke marker.");
-    maybeAutoplayAudio("start");
+  document.getElementById("start-ar").addEventListener("click", async () => {
+    const startButton = document.getElementById("start-ar");
+    startButton.disabled = true;
+    startButton.textContent = "Meminta kamera...";
+    setStatus("Meminta akses kamera dari browser...");
+
+    try {
+      await requestCameraAccess();
+      state.userStarted = true;
+      document.getElementById("boot-overlay").classList.add("hidden");
+      setStatus("Kamera diizinkan. Arahkan perangkat ke marker.", "success");
+      maybeAutoplayAudio("start");
+    } catch (error) {
+      const message = getCameraErrorMessage(error);
+      setStatus(message, "error");
+      document.getElementById("boot-text").textContent = message;
+    } finally {
+      startButton.disabled = false;
+      startButton.textContent = "Mulai AR";
+    }
   });
 }
 
@@ -360,7 +429,14 @@ async function main() {
     setupAudio(experience);
     buildMarkerScene(experience);
     startAnimationLoop();
-    setStatus("Experience siap. Tekan Mulai AR untuk membuka kamera.");
+    if (!window.isSecureContext && window.location.hostname !== "localhost") {
+      setStatus(
+        "Halaman belum HTTPS/localhost, jadi kamera tidak akan terbuka.",
+        "error",
+      );
+    } else {
+      setStatus("Experience siap. Tekan Mulai AR untuk membuka prompt kamera.");
+    }
   } catch (error) {
     setStatus(error.message, "error");
     document.getElementById("boot-text").textContent = error.message;
