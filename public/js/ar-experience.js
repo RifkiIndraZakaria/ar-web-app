@@ -48,57 +48,6 @@ function sleep(ms) {
   });
 }
 
-/** Injeksi CSS agar canvas & scene benar-benar transparan — FIX LAYAR HITAM */
-function injectTransparentStyles() {
-  const id = "ar-transparent-fix";
-  if (document.getElementById(id)) return;
-  const style = document.createElement("style");
-  style.id = id;
-  style.textContent = `
-    #scene-host, #scene-host a-scene, #scene-host canvas,
-    a-scene, a-scene canvas, .a-canvas,
-    .a-enter-vr, .a-orientation-modal {
-      background: transparent !important;
-      background-color: transparent !important;
-    }
-    a-scene canvas.a-canvas {
-      opacity: 1 !important;
-      filter: none !important;
-    }
-    /* Pastikan overlay HUD tidak membuat background hitam */
-    #hud, #ui-layer {
-      background: transparent !important;
-      pointer-events: none;
-    }
-    #hud > *, #ui-layer > * {
-      pointer-events: auto;
-    }
-  `;
-  document.head.appendChild(style);
-}
-
-/** Paksa renderer WebGL agar transparan setelah scene siap */
-function forceTransparentRenderer(scene) {
-  if (!scene || !scene.renderer) return;
-  const renderer = scene.renderer;
-  // Set clear alpha = 0 (transparent)
-  renderer.setClearAlpha(0);
-  renderer.setClearColor(0x000000, 0);
-  // Pastikan alpha buffer aktif
-  if (renderer.domElement) {
-    renderer.domElement.style.background = "transparent";
-  }
-  // Untuk WebXR, pastikan XR framebuffer juga transparan
-  if (renderer.xr && renderer.xr.getSession) {
-    const session = renderer.xr.getSession();
-    if (session && session.requestReferenceSpace) {
-      try {
-        session.updateRenderState({ baseLayer: undefined });
-      } catch (_) { /* ignore */ }
-    }
-  }
-}
-
 // ─── EXPERIENCE CONFIG ──────────────────────────────────────────────────────
 function getExperienceId() {
   return (
@@ -401,17 +350,12 @@ function registerARComponents() {
 
 // ─── SCENE BUILDING ─────────────────────────────────────────────────────────
 function buildScene(exp) {
-  // FIX LAYAR HITAM — injeksi CSS transparansi sebelum scene dibuat
-  injectTransparentStyles();
-
   let host = qs("#scene-host");
   if (!host) {
     host = document.createElement("div");
     host.id = "scene-host";
     document.body.prepend(host);
   }
-  // Pastikan host sendiri transparan
-  host.style.background = "transparent";
 
   const m = exp.model || {};
 
@@ -421,24 +365,24 @@ function buildScene(exp) {
 
   // FIX LAYAR HITAM #1 — renderer:
   //   alpha: true          → canvas WebGL transparan (kamera pass-through terlihat)
-  //   colorManagement: true → warna benar di semua perangkat
+  //   colorSpace: sRGB     → warna benar di Android Chrome
   //   premultipliedAlpha: false → compositing benar, tidak ada artefak hitam
   scene.setAttribute(
     "renderer",
     [
       "antialias: true",
       "alpha: true",
-      "colorManagement: true",
+      "colorSpace: sRGB",
       "premultipliedAlpha: false",
     ].join("; "),
   );
 
   scene.setAttribute("vr-mode-ui", "enabled: false");
 
-  // FIX LAYAR HITAM #2 — background transparan
-  // A-Frame default background adalah hitam opaque. Gunakan hanya transparent: true
-  // agar feed kamera dari WebXR pass-through terlihat di belakang canvas.
-  scene.setAttribute("background", "transparent: true");
+  // FIX LAYAR HITAM #2 — background: color: transparent
+  // A-Frame default background adalah hitam opaque.
+  // "transparent: true" saja terkadang tidak cukup — kombinasikan dengan color.
+  scene.setAttribute("background", "color: transparent; transparent: true");
 
   // WebXR immersive-ar dengan hit-test feature
   // FIX LAYAR HITAM #3 — dom-overlay memungkinkan HUD HTML tetap tampil
@@ -479,14 +423,6 @@ function buildScene(exp) {
 
   host.replaceChildren(scene);
   state.scene = scene;
-
-  // FIX LAYAR HITAM #4 — paksa renderer transparan begitu scene siap
-  scene.addEventListener("loaded", function () {
-    forceTransparentRenderer(scene);
-  }, { once: true });
-  scene.addEventListener("renderstart", function () {
-    forceTransparentRenderer(scene);
-  }, { once: true });
 
   // Base values untuk transform
   state.baseScale = parseScaleX(m.scale);
@@ -839,18 +775,11 @@ function bindUI() {
         }, 3000);
       });
 
-      // Lacak sesi XR untuk cleanup & transparansi
+      // Lacak sesi XR untuk cleanup
       scene.addEventListener("enter-vr", function () {
         const renderer = scene.renderer;
         if (renderer && renderer.xr) {
           state.xrSession = renderer.xr.getSession();
-          // FIX LAYAR HITAM — paksa renderer transparan begitu XR session aktif
-          forceTransparentRenderer(scene);
-          // Pastikan environment blend mode = additive/alpha-blend untuk pass-through kamera
-          const session = renderer.xr.getSession();
-          if (session && session.environmentBlendMode) {
-            console.log("[AR] environmentBlendMode:", session.environmentBlendMode);
-          }
         }
         hideLoading();
         setStatus("Arahkan kamera ke lantai atau meja…", "");
