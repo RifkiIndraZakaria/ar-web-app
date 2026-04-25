@@ -281,16 +281,31 @@ function registerARComponents() {
         this.reticleEl &&
         this.reticleEl.getAttribute("visible")
       ) {
-        // Pakai posisi reticle dari hit-test
+        // Mode WebXR: posisi reticle sudah world-space dari hit-test matrix
         pos = this.reticleEl.getAttribute("position");
       } else if (!state.useWebXR) {
-        // Fallback: letakkan di depan kamera (1.5 meter)
-        pos = { x: 0, y: -1, z: -1.5 };
+        // ─── MODE FALLBACK (tanpa WebXR) ─────────────────────────────────
+        // MASALAH: pos = {0, -1, -1.5} adalah koordinat LOKAL kamera.
+        // Ketika kamera bergerak, titik referensinya ikut → objek "melayang".
+        //
+        // SOLUSI: konversi camera-local → world-space via matrixWorld kamera.
+        // Titik 1.5m di depan kamera dalam world space = posisi yang fixed.
+        const camera = this.el.sceneEl.camera;
+        if (camera && camera.matrixWorld && window.THREE) {
+          const localPoint = new THREE.Vector3(0, -0.3, -1.5);
+          localPoint.applyMatrix4(camera.matrixWorld);
+          pos = { x: localPoint.x, y: localPoint.y, z: localPoint.z };
+        } else {
+          pos = { x: 0, y: -0.5, z: -1.5 };
+        }
       } else {
-        return; // WebXR mode tapi reticle belum muncul
+        return; // WebXR aktif tapi reticle belum muncul di permukaan
       }
 
       if (!pos) return;
+
+      // Catat posisi world-space agar bisa di-enforce di tick()
+      state.placedWorldPos = { x: pos.x, y: pos.y, z: pos.z };
       this.modelEl.setAttribute("position", pos);
       this.modelEl.setAttribute("visible", "true");
 
@@ -313,7 +328,29 @@ function registerARComponents() {
     },
 
     tick: function () {
-      // Hanya jalankan hit-test jika WebXR aktif
+      // ── Enforce posisi world-space (fallback mode) ──────────────────────
+      // A-Frame kadang me-recalculate posisi lokal relatif parent.
+      // Re-set posisi dari state.placedWorldPos setiap frame jika objek
+      // sudah diletakkan dan tidak sedang di-drag.
+      if (
+        state.placedWorldPos &&
+        this.placed &&
+        !state.useWebXR &&
+        this.modelEl
+      ) {
+        const cur = this.modelEl.getAttribute("position");
+        const wp = state.placedWorldPos;
+        // Hanya update jika ada drift signifikan (>0.001 meter)
+        if (
+          Math.abs(cur.x - wp.x) > 0.001 ||
+          Math.abs(cur.y - wp.y) > 0.001 ||
+          Math.abs(cur.z - wp.z) > 0.001
+        ) {
+          this.modelEl.setAttribute("position", wp);
+        }
+      }
+
+      // ── WebXR hit-test ──────────────────────────────────────────────────
       if (!state.useWebXR || !state.hitTestSource) return;
 
       const renderer = this.el.sceneEl.renderer;
