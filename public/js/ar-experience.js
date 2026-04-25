@@ -24,43 +24,24 @@ const state = {
   touch: { lastDist: null, lastX: null },
   xrSession: null,
   hitTestSource: null,
-  useWebXR: false, // true jika WebXR hit-test berhasil
+  useWebXR: false,   // true jika WebXR hit-test berhasil
 };
 
-function qs(sel) {
-  return document.querySelector(sel);
-}
-function clamp(v, lo, hi) {
-  return Math.min(hi, Math.max(lo, v));
-}
-function parseScaleX(s) {
-  const n = Number((s || "1 1 1").split(/\s+/)[0]);
-  return isNaN(n) || n === 0 ? 1 : n;
-}
-function parseRotY(s) {
-  const p = (s || "0 0 0").split(/\s+/).map(Number);
-  return p[1] || 0;
-}
-function sleep(ms) {
-  return new Promise(function (r) {
-    setTimeout(r, ms);
-  });
-}
+function qs(sel) { return document.querySelector(sel); }
+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+function parseScaleX(s) { const n = Number((s || "1 1 1").split(/\s+/)[0]); return isNaN(n) || n === 0 ? 1 : n; }
+function parseRotY(s) { const p = (s || "0 0 0").split(/\s+/).map(Number); return p[1] || 0; }
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
 function getExperienceId() {
-  return (
-    new URLSearchParams(window.location.search).get("experience") || "demo-hiro"
-  );
+  return new URLSearchParams(window.location.search).get("experience") || "demo-hiro";
 }
 
 async function fetchExperience() {
   const res = await fetch("data/experiences.json", { cache: "no-store" });
-  if (!res.ok)
-    throw new Error("Gagal memuat experiences.json (HTTP " + res.status + ")");
+  if (!res.ok) throw new Error("Gagal memuat experiences.json (HTTP " + res.status + ")");
   const data = await res.json();
-  const exp = (data.experiences || []).find(function (e) {
-    return e.id === getExperienceId();
-  });
+  const exp = (data.experiences || []).find(function (e) { return e.id === getExperienceId(); });
   if (!exp) throw new Error("Experience tidak ditemukan.");
   return exp;
 }
@@ -77,44 +58,26 @@ function setStatus(msg, tone) {
 
 function setPageCopy(exp) {
   document.title = exp.title + " | AR";
-  [
-    ["#boot-title", exp.title],
-    ["#experience-title", exp.title],
-    ["#experience-description", exp.description || ""],
-    ["#boot-text", exp.bootText || "Tekan Mulai AR untuk memulai."],
-  ].forEach(function (pair) {
-    const el = qs(pair[0]);
-    if (el) el.textContent = pair[1];
-  });
+  [["#boot-title", exp.title], ["#experience-title", exp.title],
+   ["#experience-description", exp.description || ""],
+   ["#boot-text", exp.bootText || "Tekan Mulai AR untuk memulai."]
+  ].forEach(function (pair) { const el = qs(pair[0]); if (el) el.textContent = pair[1]; });
 }
 
 function showLoading(msg) {
-  const o = qs("#loading-overlay");
-  if (o) o.classList.remove("hidden");
-  const t = qs("#loading-text");
-  if (t) t.textContent = msg || "Memuat…";
+  const o = qs("#loading-overlay"); if (o) o.classList.remove("hidden");
+  const t = qs("#loading-text"); if (t) t.textContent = msg || "Memuat…";
 }
-function hideLoading() {
-  const o = qs("#loading-overlay");
-  if (o) o.classList.add("hidden");
-}
-function showBoot() {
-  const o = qs("#boot-overlay");
-  if (o) o.classList.remove("hidden");
-}
-function hideBoot() {
-  const o = qs("#boot-overlay");
-  if (o) o.classList.add("hidden");
-}
+function hideLoading() { const o = qs("#loading-overlay"); if (o) o.classList.add("hidden"); }
+function showBoot() { const o = qs("#boot-overlay"); if (o) o.classList.remove("hidden"); }
+function hideBoot() { const o = qs("#boot-overlay"); if (o) o.classList.add("hidden"); }
 
 // ─── KAMERA VIDEO BACKGROUND ─────────────────────────────────────────────────
 // Tampilkan feed kamera langsung ke elemen <video id="camera-bg">
 // Ini SELALU bekerja karena hanya pakai getUserMedia biasa, bukan WebXR.
 async function startCameraBackground() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error(
-      "Browser tidak mendukung getUserMedia. Gunakan Chrome terbaru.",
-    );
+    throw new Error("Browser tidak mendukung getUserMedia. Gunakan Chrome terbaru.");
   }
 
   const video = qs("#camera-bg");
@@ -123,7 +86,7 @@ async function startCameraBackground() {
   const stream = await navigator.mediaDevices.getUserMedia({
     video: {
       facingMode: { ideal: "environment" },
-      width: { ideal: 1280 },
+      width:  { ideal: 1280 },
       height: { ideal: 720 },
     },
     audio: false,
@@ -145,9 +108,7 @@ async function startCameraBackground() {
 
 function stopCameraBackground() {
   if (state.cameraStream) {
-    state.cameraStream.getTracks().forEach(function (t) {
-      t.stop();
-    });
+    state.cameraStream.getTracks().forEach(function (t) { t.stop(); });
     state.cameraStream = null;
   }
   const video = qs("#camera-bg");
@@ -178,9 +139,7 @@ async function tryStartWebXRHitTest(scene) {
     }
 
     const viewerSpace = await session.requestReferenceSpace("viewer");
-    state.hitTestSource = await session.requestHitTestSource({
-      space: viewerSpace,
-    });
+    state.hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
 
     session.addEventListener("end", function () {
       state.hitTestSource = null;
@@ -189,10 +148,7 @@ async function tryStartWebXRHitTest(scene) {
 
     return true;
   } catch (err) {
-    console.warn(
-      "[WebXR hit-test] Tidak tersedia, pakai fallback:",
-      err.message,
-    );
+    console.warn("[WebXR hit-test] Tidak tersedia, pakai fallback:", err.message);
     return false;
   }
 }
@@ -205,9 +161,9 @@ async function tryStartWebXRHitTest(scene) {
 
 const surfaceDetector = {
   // State
-  confidence: 0, // 0–100: seberapa yakin ada bidang datar di depan
-  isFlat: false, // true jika confidence >= threshold
-  threshold: 55, // min confidence untuk izinkan tap
+  confidence: 0,        // 0–100: seberapa yakin ada bidang datar di depan
+  isFlat: false,        // true jika confidence >= threshold
+  threshold: 55,        // min confidence untuk izinkan tap
 
   // Optical flow
   _canvas: null,
@@ -216,7 +172,7 @@ const surfaceDetector = {
   _rafId: null,
 
   // IMU
-  _imuAlpha: 0, // rata-rata bergerak sudut pitch (derajat dari horizontal)
+  _imuAlpha: 0,         // rata-rata bergerak sudut pitch (derajat dari horizontal)
   _imuReady: false,
 
   init: function () {
@@ -245,16 +201,12 @@ const surfaceDetector = {
         DeviceOrientationEvent.requestPermission()
           .then(function (perm) {
             if (perm === "granted") {
-              window.addEventListener("deviceorientation", handleOrientation, {
-                passive: true,
-              });
+              window.addEventListener("deviceorientation", handleOrientation, { passive: true });
             }
           })
           .catch(function () {});
       } else {
-        window.addEventListener("deviceorientation", handleOrientation, {
-          passive: true,
-        });
+        window.addEventListener("deviceorientation", handleOrientation, { passive: true });
       }
     }
   },
@@ -267,8 +219,7 @@ const surfaceDetector = {
 
     // Canvas kecil (64x36) untuk efisiensi — resolusi penuh tidak diperlukan
     const c = document.createElement("canvas");
-    c.width = 64;
-    c.height = 36;
+    c.width = 64; c.height = 36;
     self._canvas = c;
     self._ctx = c.getContext("2d", { willReadFrequently: true });
 
@@ -286,36 +237,32 @@ const surfaceDetector = {
         if (self._prevFrame) {
           const prev = self._prevFrame;
           let sumDiff = 0;
-          let sumVar = 0;
+          let sumVar  = 0;
           const N = cur.length / 4;
 
           for (let i = 0; i < cur.length; i += 4) {
-            const dr = cur[i] - prev[i];
-            const dg = cur[i + 1] - prev[i + 1];
-            const db = cur[i + 2] - prev[i + 2];
+            const dr = cur[i]   - prev[i];
+            const dg = cur[i+1] - prev[i+1];
+            const db = cur[i+2] - prev[i+2];
             const diff = (Math.abs(dr) + Math.abs(dg) + Math.abs(db)) / 3;
             sumDiff += diff;
 
             // Varians lokal: ukur seberapa "datar" tekstur (sedikit detail = meja/lantai polos)
-            const bright = (cur[i] + cur[i + 1] + cur[i + 2]) / 3;
+            const bright = (cur[i] + cur[i+1] + cur[i+2]) / 3;
             sumVar += bright;
           }
 
-          const avgDiff = sumDiff / N; // 0 = diam, >30 = banyak gerak
+          const avgDiff = sumDiff / N;   // 0 = diam, >30 = banyak gerak
           const avgBright = sumVar / N;
 
           // Skor motion: kamera pelan/diam = lebih mungkin mengarah ke bidang
           // (pengguna biasanya menahan HP diam saat mengincar permukaan)
-          const motionScore = Math.max(
-            0,
-            Math.min(100, (1 - avgDiff / 25) * 100),
-          );
+          const motionScore = Math.max(0, Math.min(100, (1 - avgDiff / 25) * 100));
 
           // Skor tekstur: kecerahan sedang = meja/lantai (bukan langit/hitam)
-          const textureScore =
-            avgBright > 20 && avgBright < 230
-              ? Math.min(100, 40 + (1 - Math.abs(avgBright - 128) / 128) * 60)
-              : 0;
+          const textureScore = avgBright > 20 && avgBright < 230
+            ? Math.min(100, 40 + (1 - Math.abs(avgBright - 128) / 128) * 60)
+            : 0;
 
           // Gabungkan: motion 60% + tekstur 20% + IMU 20%
           const imuScore = self._imuReady ? self._imuAlpha : 50;
@@ -334,14 +281,10 @@ const surfaceDetector = {
       self._rafId = setTimeout(analyse, 200);
     }
 
-    video.addEventListener(
-      "play",
-      function () {
-        clearTimeout(self._rafId);
-        setTimeout(analyse, 500);
-      },
-      { once: true },
-    );
+    video.addEventListener("play", function () {
+      clearTimeout(self._rafId);
+      setTimeout(analyse, 500);
+    }, { once: true });
 
     // Juga mulai jika video sudah berjalan
     if (video.readyState >= 2) setTimeout(analyse, 500);
@@ -354,9 +297,9 @@ const surfaceDetector = {
 
   // Perbarui indikator UI
   updateUI: function () {
-    const bar = qs("#surface-bar");
+    const bar   = qs("#surface-bar");
     const label = qs("#surface-label");
-    const hint = qs("#surface-hint");
+    const hint  = qs("#surface-hint");
     if (!bar || !label) return;
 
     const pct = Math.round(this.confidence);
@@ -366,20 +309,19 @@ const surfaceDetector = {
     if (pct < 35) {
       bar.style.background = "var(--color-text-danger)";
       if (label) label.textContent = "Belum terdeteksi";
-      if (hint)
-        hint.textContent = "Arahkan kamera ke lantai atau meja yang datar";
+      if (hint)  hint.textContent  = "Arahkan kamera ke lantai atau meja yang datar";
     } else if (pct < this.threshold) {
       bar.style.background = "var(--color-text-warning)";
       if (label) label.textContent = "Hampir…";
-      if (hint)
-        hint.textContent = "Tahan kamera diam sejenak di atas permukaan";
+      if (hint)  hint.textContent  = "Tahan kamera diam sejenak di atas permukaan";
     } else {
       bar.style.background = "var(--color-text-success)";
       if (label) label.textContent = "Bidang terdeteksi \u2713";
-      if (hint) hint.textContent = "Tap layar untuk meletakkan objek";
+      if (hint)  hint.textContent  = "Tap layar untuk meletakkan objek";
     }
   },
 };
+
 
 // ─── REGISTER KOMPONEN AFRAME ────────────────────────────────────────────────
 function registerARComponents() {
@@ -398,20 +340,11 @@ function registerARComponents() {
 
       // ── Reticle (hanya tampil di mode WebXR hit-test) ──
       const reticle = document.createElement("a-entity");
-      reticle.setAttribute(
-        "geometry",
-        "primitive:ring; radiusInner:0.05; radiusOuter:0.08; segmentsTheta:32",
-      );
-      reticle.setAttribute(
-        "material",
-        "color:#f97316; shader:flat; side:double; opacity:0.9",
-      );
+      reticle.setAttribute("geometry", "primitive:ring; radiusInner:0.05; radiusOuter:0.08; segmentsTheta:32");
+      reticle.setAttribute("material", "color:#f97316; shader:flat; side:double; opacity:0.9");
       reticle.setAttribute("rotation", "-90 0 0");
       reticle.setAttribute("visible", "false");
-      reticle.setAttribute(
-        "animation__pulse",
-        "property:scale;from:1 1 1;to:1.2 1.2 1.2;dir:alternate;dur:600;loop:true;easing:easeInOutSine",
-      );
+      reticle.setAttribute("animation__pulse", "property:scale;from:1 1 1;to:1.2 1.2 1.2;dir:alternate;dur:600;loop:true;easing:easeInOutSine");
       self.el.sceneEl.appendChild(reticle);
       self.reticleEl = reticle;
       state.reticleEntity = reticle;
@@ -426,15 +359,9 @@ function registerARComponents() {
       if (self.data.animMixer) model.setAttribute("animation-mixer", "");
       model.addEventListener("model-loaded", function () {
         if (state.useWebXR) {
-          setStatus(
-            "Model dimuat ✓ — Arahkan kamera ke lantai lalu tap.",
-            "success",
-          );
+          setStatus("Model dimuat ✓ — Arahkan kamera ke lantai lalu tap.", "success");
         } else {
-          setStatus(
-            "Model dimuat ✓ — Tap layar untuk meletakkan objek.",
-            "success",
-          );
+          setStatus("Model dimuat ✓ — Tap layar untuk meletakkan objek.", "success");
         }
       });
       model.addEventListener("model-error", function () {
@@ -457,24 +384,17 @@ function registerARComponents() {
       // (kecuali WebXR hit-test aktif — sudah punya konfirmasi hardware)
       if (!state.useWebXR && !this.placed) {
         if (!surfaceDetector.isFlat) {
-          setStatus(
-            "Arahkan kamera ke bidang datar dulu — " +
-              Math.round(surfaceDetector.confidence) +
-              "% terdeteksi",
-            "",
-          );
+          setStatus("Arahkan kamera ke bidang datar dulu — " +
+            Math.round(surfaceDetector.confidence) + "% terdeteksi", "");
           return;
         }
       }
 
       let pos;
-      if (
-        state.useWebXR &&
-        this.reticleEl &&
-        this.reticleEl.getAttribute("visible")
-      ) {
+      if (state.useWebXR && this.reticleEl && this.reticleEl.getAttribute("visible")) {
         // Mode WebXR: posisi reticle sudah world-space dari hit-test matrix
         pos = this.reticleEl.getAttribute("position");
+
       } else if (!state.useWebXR) {
         // ─── MODE FALLBACK (tanpa WebXR) ─────────────────────────────────
         // MASALAH: pos = {0, -1, -1.5} adalah koordinat LOKAL kamera.
@@ -490,6 +410,7 @@ function registerARComponents() {
         } else {
           pos = { x: 0, y: -0.5, z: -1.5 };
         }
+
       } else {
         return; // WebXR aktif tapi reticle belum muncul di permukaan
       }
@@ -510,9 +431,7 @@ function registerARComponents() {
         const ind = qs("#marker-indicator");
         if (ind) {
           ind.classList.add("found");
-          setTimeout(function () {
-            ind.classList.remove("found");
-          }, 2000);
+          setTimeout(function () { ind.classList.remove("found"); }, 2000);
         }
       } else {
         setStatus("Objek dipindahkan ✓", "success");
@@ -524,20 +443,13 @@ function registerARComponents() {
       // A-Frame kadang me-recalculate posisi lokal relatif parent.
       // Re-set posisi dari state.placedWorldPos setiap frame jika objek
       // sudah diletakkan dan tidak sedang di-drag.
-      if (
-        state.placedWorldPos &&
-        this.placed &&
-        !state.useWebXR &&
-        this.modelEl
-      ) {
+      if (state.placedWorldPos && this.placed && !state.useWebXR && this.modelEl) {
         const cur = this.modelEl.getAttribute("position");
         const wp = state.placedWorldPos;
         // Hanya update jika ada drift signifikan (>0.001 meter)
-        if (
-          Math.abs(cur.x - wp.x) > 0.001 ||
-          Math.abs(cur.y - wp.y) > 0.001 ||
-          Math.abs(cur.z - wp.z) > 0.001
-        ) {
+        if (Math.abs(cur.x - wp.x) > 0.001 ||
+            Math.abs(cur.y - wp.y) > 0.001 ||
+            Math.abs(cur.z - wp.z) > 0.001) {
           this.modelEl.setAttribute("position", wp);
         }
       }
@@ -559,11 +471,7 @@ function registerARComponents() {
         const pose = results[0].getPose(refSpace);
         if (pose) {
           const m = pose.transform.matrix;
-          this.reticleEl.setAttribute("position", {
-            x: m[12],
-            y: m[13],
-            z: m[14],
-          });
+          this.reticleEl.setAttribute("position", { x: m[12], y: m[13], z: m[14] });
           this.reticleEl.setAttribute("visible", "true");
         }
       } else {
@@ -590,10 +498,7 @@ function buildScene(exp) {
   scene.setAttribute("loading-screen", "enabled: false");
 
   // alpha:true → canvas WebGL transparan → video background terlihat
-  scene.setAttribute(
-    "renderer",
-    "antialias: true; alpha: true; premultipliedAlpha: false",
-  );
+  scene.setAttribute("renderer", "antialias: true; alpha: true; premultipliedAlpha: false");
   scene.setAttribute("vr-mode-ui", "enabled: false");
   scene.setAttribute("background", "color: transparent; transparent: true");
 
@@ -629,26 +534,10 @@ function buildScene(exp) {
   return scene;
 }
 
-// ─── TRANSFORM ───────────────────────────────────────────────────────────────
-function applyTransform() {
-  if (!state.modelEntity || !state.experience) return;
-  const rot = (
-    (state.experience.model && state.experience.model.rotation) ||
-    "0 0 0"
-  ).split(/\s+/);
-  const s = state.currentScale;
-  state.modelEntity.setAttribute("scale", s + " " + s + " " + s);
-  state.modelEntity.setAttribute(
-    "rotation",
-    (rot[0] || "0") + " " + state.currentRotationY + " " + (rot[2] || "0"),
-  );
-}
+// ─── TRANSFORM (compat wrappers) ─────────────────────────────────────────────
+function applyTransform() { orbit.apply(); }
+function resetTransform() { orbit.reset(); }
 
-function resetTransform() {
-  state.currentScale = state.baseScale;
-  state.currentRotationY = state.baseRotationY;
-  applyTransform();
-}
 
 // ─── AUDIO ────────────────────────────────────────────────────────────────────
 function setupAudio(exp) {
@@ -665,39 +554,23 @@ function setupAudio(exp) {
 
 function playAudio() {
   const cfg = (state.experience && state.experience.audio) || {};
-  if (state.audioElement) {
-    state.audioElement.currentTime = 0;
-    state.audioElement.play().catch(function () {});
-    return;
-  }
+  if (state.audioElement) { state.audioElement.currentTime = 0; state.audioElement.play().catch(function () {}); return; }
   if (cfg.speechText && "speechSynthesis" in window) {
     window.speechSynthesis.cancel();
     const utt = new SpeechSynthesisUtterance(cfg.speechText);
-    utt.lang = cfg.lang || "id-ID";
-    utt.rate = 1;
-    utt.pitch = 1;
-    utt.onstart = function () {
-      state.speechActive = true;
-    };
-    utt.onend = utt.onerror = function () {
-      state.speechActive = false;
-    };
+    utt.lang = cfg.lang || "id-ID"; utt.rate = 1; utt.pitch = 1;
+    utt.onstart = function () { state.speechActive = true; };
+    utt.onend = utt.onerror = function () { state.speechActive = false; };
     window.speechSynthesis.speak(utt);
   }
 }
 
 function toggleAudio() {
   if (state.audioElement) {
-    state.audioElement.paused
-      ? state.audioElement.play().catch(function () {})
-      : state.audioElement.pause();
+    state.audioElement.paused ? state.audioElement.play().catch(function () {}) : state.audioElement.pause();
     return;
   }
-  if (state.speechActive) {
-    window.speechSynthesis.cancel();
-    state.speechActive = false;
-    return;
-  }
+  if (state.speechActive) { window.speechSynthesis.cancel(); state.speechActive = false; return; }
   playAudio();
 }
 
@@ -708,83 +581,143 @@ function autoplayAudio(trigger) {
   if (trigger === "start" && cfg.autoplayOnStart) playAudio();
 }
 
-// ─── GESTUR SENTUH ───────────────────────────────────────────────────────────
+// ─── ORBIT CONTROLS ──────────────────────────────────────────────────────────
+// Setelah objek diletakkan, drag 1 jari = putar scene (orbit virtual).
+// Drag vertikal = pitch (rotasi X), drag horizontal = yaw (rotasi Y).
+// Cubit 2 jari = zoom (scale objek).
+// Double-tap = reset pose.
+
+const orbit = {
+  // Sudut orbit saat ini (derajat)
+  rotY: 0,      // horizontal drag
+  rotX: 0,      // vertikal drag (tilt atas-bawah)
+  scale: 1,
+
+  // Batas
+  minX: -60,    // jangan sampai objek terlihat dari bawah tanah
+  maxX: 60,
+  minScale: 0.3,
+  maxScale: 3.0,
+
+  // Sensitivitas
+  sensitivityY: 0.4,
+  sensitivityX: 0.3,
+
+  // Touch state
+  _lastX: null,
+  _lastY: null,
+  _lastDist: null,
+  _lastTap: 0,
+  _mode: "idle",  // "idle" | "placing" | "orbiting"
+
+  init: function (exp) {
+    const ia = (exp && exp.interaction) || {};
+    this.minScale   = Number(ia.minScale   || 0.3);
+    this.maxScale   = Number(ia.maxScale   || 3.0);
+    this.scale      = 1;
+    this.rotY       = parseRotY((exp && exp.model && exp.model.rotation) || "0 0 0");
+    this.rotX       = 0;
+    this._mode      = "placing";
+  },
+
+  // Terapkan pose ke model (rotasi + scale)
+  apply: function () {
+    if (!state.modelEntity) return;
+    const s = this.scale * state.baseScale;
+    state.modelEntity.object3D.scale.set(s, s, s);
+    state.modelEntity.object3D.rotation.order = "YXZ";
+    state.modelEntity.object3D.rotation.y = THREE.MathUtils.degToRad(this.rotY);
+    state.modelEntity.object3D.rotation.x = THREE.MathUtils.degToRad(this.rotX);
+  },
+
+  reset: function () {
+    this.rotY  = parseRotY(
+      (state.experience && state.experience.model && state.experience.model.rotation) || "0 0 0"
+    );
+    this.rotX  = 0;
+    this.scale = 1;
+    this.apply();
+  },
+};
+
 function touchDist(t) {
   return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
 }
-let lastTapTime = 0;
 
 function bindTouchGestures() {
   const overlay = qs("#touch-overlay");
   if (!overlay) return;
 
-  overlay.addEventListener(
-    "touchstart",
-    function (e) {
-      if (e.touches.length === 2) {
-        state.touch.lastDist = touchDist(e.touches);
-      } else if (e.touches.length === 1) {
-        state.touch.lastX = e.touches[0].clientX;
-        const now = Date.now();
-        if (now - lastTapTime < 300) resetTransform();
-        lastTapTime = now;
+  // ── touchstart ────────────────────────────────────────────────────────────
+  overlay.addEventListener("touchstart", function (e) {
+    if (e.touches.length === 2) {
+      orbit._lastDist = touchDist(e.touches);
+      orbit._lastX = null; orbit._lastY = null;
+    } else if (e.touches.length === 1) {
+      orbit._lastX = e.touches[0].clientX;
+      orbit._lastY = e.touches[0].clientY;
+      orbit._lastDist = null;
+
+      // Double-tap = reset pose
+      const now = Date.now();
+      if (now - orbit._lastTap < 280) {
+        orbit.reset();
+        setStatus("Pose direset ✓", "success");
       }
-    },
-    { passive: true },
-  );
+      orbit._lastTap = now;
+    }
+  }, { passive: true });
 
-  overlay.addEventListener(
-    "touchmove",
-    function (e) {
-      if (!state.experience || !state.placed) return;
-      const ia = state.experience.interaction || {};
-      const min = Number(ia.minScale || 0.4),
-        max = Number(ia.maxScale || 2.4);
-      if (e.touches.length === 2 && state.touch.lastDist !== null) {
-        const d = touchDist(e.touches);
-        state.currentScale = clamp(
-          state.currentScale + (d - state.touch.lastDist) * 0.006,
-          min,
-          max,
-        );
-        state.touch.lastDist = d;
-        applyTransform();
-      } else if (e.touches.length === 1 && state.touch.lastX !== null) {
-        state.currentRotationY +=
-          (e.touches[0].clientX - state.touch.lastX) * 0.45;
-        state.touch.lastX = e.touches[0].clientX;
-        applyTransform();
-      }
-    },
-    { passive: true },
-  );
+  // ── touchmove ─────────────────────────────────────────────────────────────
+  overlay.addEventListener("touchmove", function (e) {
+    // Mode placing: belum ada objek, abaikan drag
+    if (!state.placed) return;
 
-  overlay.addEventListener(
-    "touchend",
-    function (e) {
-      if (e.touches.length < 2) state.touch.lastDist = null;
-      if (e.touches.length < 1) state.touch.lastX = null;
-    },
-    { passive: true },
-  );
+    // ── 2 jari: pinch zoom ──
+    if (e.touches.length === 2 && orbit._lastDist !== null) {
+      const d = touchDist(e.touches);
+      const delta = (d - orbit._lastDist) * 0.008;
+      orbit.scale = clamp(orbit.scale + delta, orbit.minScale / state.baseScale, orbit.maxScale / state.baseScale);
+      orbit._lastDist = d;
+      orbit.apply();
+      return;
+    }
 
-  // Tap untuk meletakkan — forward ke scene
+    // ── 1 jari: orbit ──
+    if (e.touches.length === 1 && orbit._lastX !== null) {
+      const dx = e.touches[0].clientX - orbit._lastX;
+      const dy = e.touches[0].clientY - orbit._lastY;
+
+      orbit.rotY += dx * orbit.sensitivityY;
+      orbit.rotX  = clamp(orbit.rotX - dy * orbit.sensitivityX, orbit.minX, orbit.maxX);
+
+      orbit._lastX = e.touches[0].clientX;
+      orbit._lastY = e.touches[0].clientY;
+      orbit.apply();
+    }
+  }, { passive: true });
+
+  // ── touchend ──────────────────────────────────────────────────────────────
+  overlay.addEventListener("touchend", function (e) {
+    if (e.touches.length < 2) orbit._lastDist = null;
+    if (e.touches.length < 1) { orbit._lastX = null; orbit._lastY = null; }
+  }, { passive: true });
+
+  // ── tap: teruskan ke scene untuk penempatan ──
   overlay.addEventListener("click", function () {
-    const sceneEl = state.scene;
-    if (sceneEl)
-      sceneEl.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    if (state.scene) {
+      state.scene.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }
   });
 }
+
 
 // ─── CLEANUP ──────────────────────────────────────────────────────────────────
 function cleanup() {
   stopCameraBackground();
   if (state.audioElement) state.audioElement.pause();
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-  if (state.xrSession) {
-    state.xrSession.end().catch(function () {});
-    state.xrSession = null;
-  }
+  if (state.xrSession) { state.xrSession.end().catch(function () {}); state.xrSession = null; }
 }
 
 // ─── UI BINDING ───────────────────────────────────────────────────────────────
@@ -792,65 +725,50 @@ function bindUI() {
   window.addEventListener("pagehide", cleanup);
   window.addEventListener("beforeunload", cleanup);
 
-  const toggleBtn = qs("#toggle-panel"),
-    infoPanel = qs("#info-panel");
+  const toggleBtn = qs("#toggle-panel"), infoPanel = qs("#info-panel");
   if (toggleBtn && infoPanel) {
     toggleBtn.addEventListener("click", function () {
       infoPanel.classList.toggle("collapsed");
-      toggleBtn.textContent = infoPanel.classList.contains("collapsed")
-        ? "+"
-        : "−";
+      toggleBtn.textContent = infoPanel.classList.contains("collapsed") ? "+" : "−";
     });
   }
 
   const playAudioBtn = qs("#play-audio");
-  if (playAudioBtn)
-    playAudioBtn.addEventListener("click", function () {
-      if (state.userStarted) toggleAudio();
-    });
+  if (playAudioBtn) playAudioBtn.addEventListener("click", function () { if (state.userStarted) toggleAudio(); });
 
   const helpBtn = qs("#marker-help");
-  if (helpBtn)
-    helpBtn.addEventListener("click", function () {
-      window.alert(
-        "Cara pakai AR Markerless:\n\n" +
-          "1. Arahkan kamera ke lantai atau meja yang rata.\n" +
-          "2. Tunggu lingkaran oranye muncul (hanya di mode WebXR).\n" +
-          "3. Tap layar untuk meletakkan objek 3D.\n" +
-          "4. Tap lagi untuk memindahkan objek.\n" +
-          "5. Cubit = ubah ukuran.\n" +
-          "6. Geser = putar objek.\n" +
-          "7. Ketuk 2x cepat = reset ukuran & rotasi.",
-      );
-    });
+  if (helpBtn) helpBtn.addEventListener("click", function () {
+    window.alert(
+      "Cara orbit mengelilingi objek:\n\n" +
+      "1. Tap layar untuk meletakkan objek di permukaan.\n" +
+      "2. Geser 1 jari ke kiri/kanan → putar objek horizontal.\n" +
+      "3. Geser 1 jari ke atas/bawah → lihat dari atas atau depan.\n" +
+      "4. Cubit 2 jari → zoom in / zoom out.\n" +
+      "5. Ketuk 2x cepat → reset pose ke awal.\n" +
+      "6. Tombol ↑ Atas / ↓ Depan → ganti sudut pandang vertikal."
+    );
+  });
 
   document.querySelectorAll("[data-action]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       const ia = (state.experience && state.experience.interaction) || {};
-      const rot = Number(ia.rotateStep || 15),
-        scl = Number(ia.scaleStep || 0.15);
-      const min = Number(ia.minScale || 0.4),
-        max = Number(ia.maxScale || 2.4);
+      const rotStep = Number(ia.rotateStep || 15);
+      const sclStep = Number(ia.scaleStep  || 0.15);
+
       switch (btn.dataset.action) {
-        case "rotate-left":
-          state.currentRotationY -= rot;
-          break;
-        case "rotate-right":
-          state.currentRotationY += rot;
-          break;
+        case "rotate-left":  orbit.rotY -= rotStep; orbit.apply(); break;
+        case "rotate-right": orbit.rotY += rotStep; orbit.apply(); break;
+        case "tilt-up":      orbit.rotX = clamp(orbit.rotX - rotStep, orbit.minX, orbit.maxX); orbit.apply(); break;
+        case "tilt-down":    orbit.rotX = clamp(orbit.rotX + rotStep, orbit.minX, orbit.maxX); orbit.apply(); break;
         case "scale-down":
-          state.currentScale = clamp(state.currentScale - scl, min, max);
-          break;
+          orbit.scale = clamp(orbit.scale - sclStep, orbit.minScale / state.baseScale, orbit.maxScale / state.baseScale);
+          orbit.apply(); break;
         case "scale-up":
-          state.currentScale = clamp(state.currentScale + scl, min, max);
-          break;
-        case "reset":
-          resetTransform();
-          return;
-        default:
-          return;
+          orbit.scale = clamp(orbit.scale + sclStep, orbit.minScale / state.baseScale, orbit.maxScale / state.baseScale);
+          orbit.apply(); break;
+        case "reset": orbit.reset(); setStatus("Pose direset ✓", "success"); break;
+        default: return;
       }
-      applyTransform();
     });
   });
 
@@ -864,16 +782,9 @@ function bindUI() {
     if (lbl) lbl.textContent = "Memulai…";
 
     try {
-      if (!window.isSecureContext)
-        throw new Error(
-          "Halaman harus HTTPS. Buka melalui GitHub Pages atau server HTTPS.",
-        );
-      if (!navigator.mediaDevices)
-        throw new Error(
-          "Browser tidak mendukung kamera. Gunakan Chrome terbaru.",
-        );
-      if (!window.AFRAME)
-        throw new Error("Library A-Frame gagal dimuat. Refresh halaman.");
+      if (!window.isSecureContext) throw new Error("Halaman harus HTTPS. Buka melalui GitHub Pages atau server HTTPS.");
+      if (!navigator.mediaDevices) throw new Error("Browser tidak mendukung kamera. Gunakan Chrome terbaru.");
+      if (!window.AFRAME) throw new Error("Library A-Frame gagal dimuat. Refresh halaman.");
 
       showLoading("Mengakses kamera…");
       hideBoot();
@@ -889,6 +800,7 @@ function bindUI() {
 
       const scene = buildScene(state.experience);
       setupAudio(state.experience);
+      orbit.init(state.experience);
 
       // 3. Tampilkan HUD & kontrol
       const hud = qs("#hud");
@@ -898,8 +810,7 @@ function bindUI() {
       if (touchOverlay) touchOverlay.classList.remove("hidden");
 
       if (window.innerWidth <= 480) {
-        const ip = qs("#info-panel"),
-          tb = qs("#toggle-panel");
+        const ip = qs("#info-panel"), tb = qs("#toggle-panel");
         if (ip) ip.classList.add("collapsed");
         if (tb) tb.textContent = "+";
       }
@@ -918,10 +829,7 @@ function bindUI() {
         if (state.useWebXR && state.reticleEntity) {
           const visible = state.reticleEntity.getAttribute("visible");
           if (visible) {
-            surfaceDetector.confidence = Math.min(
-              100,
-              surfaceDetector.confidence + 15,
-            );
+            surfaceDetector.confidence = Math.min(100, surfaceDetector.confidence + 15);
             surfaceDetector.isFlat = true;
           }
         }
@@ -941,6 +849,7 @@ function bindUI() {
         }
         // Jika tidak tersedia, mode fallback sudah aktif → tidak perlu pesan error
       }, 500);
+
     } catch (err) {
       hideLoading();
       showBoot();

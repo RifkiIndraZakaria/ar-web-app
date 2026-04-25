@@ -1105,8 +1105,7 @@
       <!-- Bottom: gesture hint + control strip -->
       <div class="hud-bottom">
         <p class="gesture-hint">
-          Tap: letakkan &nbsp;|&nbsp; Cubit: skala &nbsp;|&nbsp; Geser: putar
-          &nbsp;|&nbsp; Ketuk 2×: reset
+          Geser: orbit &nbsp;|&nbsp; Cubit: zoom &nbsp;|&nbsp; Ketuk 2×: reset
         </p>
         <div class="control-strip">
           <button
@@ -1122,6 +1121,20 @@
             aria-label="Putar kanan"
           >
             ↻ Putar
+          </button>
+          <button
+            class="ctrl-btn"
+            data-action="tilt-up"
+            aria-label="Lihat dari atas"
+          >
+            ↑ Atas
+          </button>
+          <button
+            class="ctrl-btn"
+            data-action="tilt-down"
+            aria-label="Lihat dari depan"
+          >
+            ↓ Depan
           </button>
           <button
             class="ctrl-btn"
