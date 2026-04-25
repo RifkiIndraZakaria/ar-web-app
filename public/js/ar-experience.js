@@ -158,16 +158,12 @@ function stopCameraBackground() {
 }
 
 // ─── WEBXR HIT-TEST (OPSIONAL) ───────────────────────────────────────────────
-// Digunakan hanya jika perangkat mendukung. Jika tidak, pakai fallback
-// "letakkan di pusat layar" sehingga tetap bisa digunakan.
 async function tryStartWebXRHitTest(scene) {
   try {
     if (!navigator.xr) return false;
     const supported = await navigator.xr.isSessionSupported("immersive-ar");
     if (!supported) return false;
 
-    // Minta sesi AR — ini TIDAK mengubah tampilan kamera
-    // (kita sudah punya video background), hanya dipakai untuk hit-test
     const session = await navigator.xr.requestSession("immersive-ar", {
       requiredFeatures: ["hit-test"],
       optionalFeatures: ["local-floor"],
@@ -175,14 +171,12 @@ async function tryStartWebXRHitTest(scene) {
 
     state.xrSession = session;
 
-    // Hubungkan sesi ke renderer A-Frame
     const renderer = scene.renderer;
     if (renderer && renderer.xr) {
       renderer.xr.enabled = true;
       await renderer.xr.setSession(session);
     }
 
-    // Setup hit-test source
     const viewerSpace = await session.requestReferenceSpace("viewer");
     state.hitTestSource = await session.requestHitTestSource({
       space: viewerSpace,
@@ -202,6 +196,190 @@ async function tryStartWebXRHitTest(scene) {
     return false;
   }
 }
+
+// ─── DETEKSI BIDANG DATAR ─────────────────────────────────────────────────────
+// Tiga lapis deteksi:
+//   1. WebXR hit-test      → paling akurat, dari sensor SLAM hardware
+//   2. Optical flow        → analisis gerak piksel kamera, tanpa hardware khusus
+//   3. IMU / DeviceMotion  → baca sudut HP, estimasi apakah kamera ke bawah
+
+const surfaceDetector = {
+  // State
+  confidence: 0, // 0–100: seberapa yakin ada bidang datar di depan
+  isFlat: false, // true jika confidence >= threshold
+  threshold: 55, // min confidence untuk izinkan tap
+
+  // Optical flow
+  _canvas: null,
+  _ctx: null,
+  _prevFrame: null,
+  _rafId: null,
+
+  // IMU
+  _imuAlpha: 0, // rata-rata bergerak sudut pitch (derajat dari horizontal)
+  _imuReady: false,
+
+  init: function () {
+    this._initIMU();
+    this._initOpticalFlow();
+  },
+
+  // ── IMU: DeviceMotion / DeviceOrientation ──────────────────────────────────
+  _initIMU: function () {
+    const self = this;
+
+    function handleOrientation(e) {
+      // e.beta = sudut depan-belakang (-180..180), 90 = kamera horizontal ke bawah
+      const beta = e.beta || 0;
+      // Normalkan ke 0–100 berdasarkan seberapa dekat ke 90°
+      const dist = Math.abs(Math.abs(beta) - 90);
+      // dist=0 → kamera tepat ke bawah (100%), dist=45 → 0%
+      const imuScore = Math.max(0, Math.min(100, (1 - dist / 45) * 100));
+      self._imuAlpha = self._imuAlpha * 0.85 + imuScore * 0.15;
+      self._imuReady = true;
+    }
+
+    if (typeof DeviceOrientationEvent !== "undefined") {
+      // iOS 13+ butuh izin eksplisit
+      if (typeof DeviceOrientationEvent.requestPermission === "function") {
+        DeviceOrientationEvent.requestPermission()
+          .then(function (perm) {
+            if (perm === "granted") {
+              window.addEventListener("deviceorientation", handleOrientation, {
+                passive: true,
+              });
+            }
+          })
+          .catch(function () {});
+      } else {
+        window.addEventListener("deviceorientation", handleOrientation, {
+          passive: true,
+        });
+      }
+    }
+  },
+
+  // ── Optical flow: bandingkan frame kamera setiap ~200ms ───────────────────
+  _initOpticalFlow: function () {
+    const self = this;
+    const video = qs("#camera-bg");
+    if (!video) return;
+
+    // Canvas kecil (64x36) untuk efisiensi — resolusi penuh tidak diperlukan
+    const c = document.createElement("canvas");
+    c.width = 64;
+    c.height = 36;
+    self._canvas = c;
+    self._ctx = c.getContext("2d", { willReadFrequently: true });
+
+    function analyse() {
+      if (!video.readyState || video.readyState < 2) {
+        self._rafId = setTimeout(analyse, 300);
+        return;
+      }
+
+      try {
+        const ctx = self._ctx;
+        ctx.drawImage(video, 0, 0, 64, 36);
+        const cur = ctx.getImageData(0, 0, 64, 36).data;
+
+        if (self._prevFrame) {
+          const prev = self._prevFrame;
+          let sumDiff = 0;
+          let sumVar = 0;
+          const N = cur.length / 4;
+
+          for (let i = 0; i < cur.length; i += 4) {
+            const dr = cur[i] - prev[i];
+            const dg = cur[i + 1] - prev[i + 1];
+            const db = cur[i + 2] - prev[i + 2];
+            const diff = (Math.abs(dr) + Math.abs(dg) + Math.abs(db)) / 3;
+            sumDiff += diff;
+
+            // Varians lokal: ukur seberapa "datar" tekstur (sedikit detail = meja/lantai polos)
+            const bright = (cur[i] + cur[i + 1] + cur[i + 2]) / 3;
+            sumVar += bright;
+          }
+
+          const avgDiff = sumDiff / N; // 0 = diam, >30 = banyak gerak
+          const avgBright = sumVar / N;
+
+          // Skor motion: kamera pelan/diam = lebih mungkin mengarah ke bidang
+          // (pengguna biasanya menahan HP diam saat mengincar permukaan)
+          const motionScore = Math.max(
+            0,
+            Math.min(100, (1 - avgDiff / 25) * 100),
+          );
+
+          // Skor tekstur: kecerahan sedang = meja/lantai (bukan langit/hitam)
+          const textureScore =
+            avgBright > 20 && avgBright < 230
+              ? Math.min(100, 40 + (1 - Math.abs(avgBright - 128) / 128) * 60)
+              : 0;
+
+          // Gabungkan: motion 60% + tekstur 20% + IMU 20%
+          const imuScore = self._imuReady ? self._imuAlpha : 50;
+          const raw = motionScore * 0.6 + textureScore * 0.2 + imuScore * 0.2;
+
+          // Rata-rata bergerak agar tidak berkedip
+          self.confidence = self.confidence * 0.7 + raw * 0.3;
+          self.isFlat = self.confidence >= self.threshold;
+        }
+
+        self._prevFrame = cur;
+      } catch (err) {
+        // Bisa terjadi kalau video belum siap
+      }
+
+      self._rafId = setTimeout(analyse, 200);
+    }
+
+    video.addEventListener(
+      "play",
+      function () {
+        clearTimeout(self._rafId);
+        setTimeout(analyse, 500);
+      },
+      { once: true },
+    );
+
+    // Juga mulai jika video sudah berjalan
+    if (video.readyState >= 2) setTimeout(analyse, 500);
+  },
+
+  stop: function () {
+    clearTimeout(this._rafId);
+    window.removeEventListener("deviceorientation", function () {});
+  },
+
+  // Perbarui indikator UI
+  updateUI: function () {
+    const bar = qs("#surface-bar");
+    const label = qs("#surface-label");
+    const hint = qs("#surface-hint");
+    if (!bar || !label) return;
+
+    const pct = Math.round(this.confidence);
+    bar.style.width = pct + "%";
+
+    // Warna berubah: merah → kuning → hijau
+    if (pct < 35) {
+      bar.style.background = "var(--color-text-danger)";
+      if (label) label.textContent = "Belum terdeteksi";
+      if (hint)
+        hint.textContent = "Arahkan kamera ke lantai atau meja yang datar";
+    } else if (pct < this.threshold) {
+      bar.style.background = "var(--color-text-warning)";
+      if (label) label.textContent = "Hampir…";
+      if (hint)
+        hint.textContent = "Tahan kamera diam sejenak di atas permukaan";
+    } else {
+      bar.style.background = "var(--color-text-success)";
+      if (label) label.textContent = "Bidang terdeteksi \u2713";
+      if (hint) hint.textContent = "Tap layar untuk meletakkan objek";
+    }
+  },
+};
 
 // ─── REGISTER KOMPONEN AFRAME ────────────────────────────────────────────────
 function registerARComponents() {
@@ -274,6 +452,20 @@ function registerARComponents() {
 
     handleTap: function () {
       if (!this.modelEl) return;
+
+      // Cek confidence bidang datar sebelum mengizinkan penempatan
+      // (kecuali WebXR hit-test aktif — sudah punya konfirmasi hardware)
+      if (!state.useWebXR && !this.placed) {
+        if (!surfaceDetector.isFlat) {
+          setStatus(
+            "Arahkan kamera ke bidang datar dulu — " +
+              Math.round(surfaceDetector.confidence) +
+              "% terdeteksi",
+            "",
+          );
+          return;
+        }
+      }
 
       let pos;
       if (
@@ -715,8 +907,28 @@ function bindUI() {
       state.userStarted = true;
       bindTouchGestures();
 
+      // 4. Mulai detektor bidang datar
+      surfaceDetector.init();
+
+      // Loop update indikator UI setiap 250ms
+      state.surfaceUIInterval = setInterval(function () {
+        surfaceDetector.updateUI();
+
+        // Sinkronisasi status dengan WebXR reticle jika aktif
+        if (state.useWebXR && state.reticleEntity) {
+          const visible = state.reticleEntity.getAttribute("visible");
+          if (visible) {
+            surfaceDetector.confidence = Math.min(
+              100,
+              surfaceDetector.confidence + 15,
+            );
+            surfaceDetector.isFlat = true;
+          }
+        }
+      }, 250);
+
       hideLoading();
-      setStatus("Kamera aktif — tap layar untuk meletakkan objek.", "success");
+      setStatus("Kamera aktif — arahkan ke lantai atau meja.", "success");
       autoplayAudio("start");
 
       // 4. Coba aktifkan WebXR hit-test (opsional, tidak wajib)

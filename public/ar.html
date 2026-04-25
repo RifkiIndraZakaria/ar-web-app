@@ -1014,6 +1014,59 @@
           </div>
           <div class="panel-body">
             <p id="experience-description">Mengambil data experience…</p>
+
+            <!-- Indikator deteksi bidang datar -->
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                "
+              >
+                <span
+                  id="surface-label"
+                  style="
+                    font-size: 0.78rem;
+                    font-weight: 600;
+                    color: var(--muted);
+                  "
+                  >Mendeteksi permukaan…</span
+                >
+              </div>
+              <div
+                style="
+                  height: 6px;
+                  border-radius: 50px;
+                  background: rgba(255, 255, 255, 0.1);
+                  overflow: hidden;
+                "
+              >
+                <div
+                  id="surface-bar"
+                  style="
+                    height: 100%;
+                    width: 0%;
+                    border-radius: 50px;
+                    background: var(--accent);
+                    transition:
+                      width 0.4s ease,
+                      background 0.4s ease;
+                  "
+                ></div>
+              </div>
+              <p
+                id="surface-hint"
+                style="
+                  font-size: 0.75rem;
+                  color: var(--muted);
+                  line-height: 1.4;
+                "
+              >
+                Arahkan kamera ke lantai atau meja yang datar
+              </p>
+            </div>
+
             <div class="status-pill" id="status-line">
               <span class="status-dot"></span>
               <span class="status-text">Menginisialisasi AR…</span>
