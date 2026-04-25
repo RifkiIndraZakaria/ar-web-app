@@ -10,7 +10,7 @@
       "description": "Scan QR untuk membuka halaman ini, lalu arahkan kamera ke lantai atau meja. Ketika lingkaran oranye muncul, tap layar untuk meletakkan karakter 3D di dunia nyata.",
       "bootText": "Pastikan lantai atau meja di depan Anda cukup terang dan tidak terlalu polos. Arahkan kamera perlahan-lahan hingga lingkaran reticle muncul, lalu tap untuk meletakkan objek.",
       "model": {
-        "src": "models/Character.glb",
+        "src": "models/Kid.glb",
         "position": "0 0 0",
         "rotation": "0 0 0",
         "scale": "0.8 0.8 0.8",
