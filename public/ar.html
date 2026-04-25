@@ -1078,6 +1078,15 @@
         <div class="top-actions">
           <button
             class="icon-btn"
+            id="mode-toggle"
+            title="Gyroscope aktif. Tap untuk ganti ke Orbit virtual."
+            aria-label="Toggle mode kamera"
+            style="font-size: 0.65rem; width: 52px; border-radius: 10px"
+          >
+            🔄 Gyro
+          </button>
+          <button
+            class="icon-btn"
             id="play-audio"
             title="Putar / pause audio"
             aria-label="Audio"
@@ -1087,8 +1096,8 @@
           <button
             class="icon-btn"
             id="marker-help"
-            title="Cara meletakkan objek"
-            aria-label="Bantuan penempatan"
+            title="Cara melihat objek dari berbagai sisi"
+            aria-label="Bantuan"
           >
             ❓
           </button>
@@ -1104,8 +1113,9 @@
 
       <!-- Bottom: gesture hint + control strip -->
       <div class="hud-bottom">
-        <p class="gesture-hint">
-          Geser: orbit &nbsp;|&nbsp; Cubit: zoom &nbsp;|&nbsp; Ketuk 2×: reset
+        <p class="gesture-hint" id="gesture-hint">
+          Gyro: gerakkan HP &nbsp;|&nbsp; Cubit: zoom &nbsp;|&nbsp; 🔄 untuk
+          ganti mode
         </p>
         <div class="control-strip">
           <button
