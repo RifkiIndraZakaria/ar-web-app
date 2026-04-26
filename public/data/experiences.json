@@ -6,18 +6,28 @@
   "experiences": [
     {
       "id": "demo-hiro",
-      "title": "Demo WebXR — Character 3D",
-      "description": "Scan QR untuk membuka halaman ini, lalu arahkan kamera ke lantai atau meja. Ketika lingkaran oranye muncul, tap layar untuk meletakkan karakter 3D di dunia nyata.",
-      "bootText": "Pastikan lantai atau meja di depan Anda cukup terang dan tidak terlalu polos. Arahkan kamera perlahan-lahan hingga lingkaran reticle muncul, lalu tap untuk meletakkan objek.",
+      "title": "Demo WebAR — Character 3D",
+      "description": "Arahkan kamera ke lantai/meja → tap untuk meletakkan karakter 3D. Gerakkan HP untuk melihat dari berbagai sisi.",
+      "bootText": "Pastikan lantai atau meja cukup terang. Arahkan kamera perlahan hingga indikator hijau muncul, lalu tap layar.",
       "model": {
-        "src": "models/Kid.glb",
+        "src": "models/Character.glb",
         "position": "0 0 0",
         "rotation": "0 0 0",
         "scale": "0.8 0.8 0.8",
         "animationMixer": true
       },
+      "hotspots": [
+        {
+          "label": "Karakter 3D Animasi",
+          "offset": { "x": 0, "y": 0.8, "z": 0 }
+        },
+        {
+          "label": "Tap 2x untuk reset pose",
+          "offset": { "x": 0.4, "y": 0.4, "z": 0 }
+        }
+      ],
       "audio": {
-        "speechText": "Selamat datang di demo AR tanpa marker. Objek tiga dimensi kini tampil di lantai di depan Anda. Gunakan gestur cubit untuk mengubah ukuran, atau geser untuk memutar.",
+        "speechText": "Selamat datang di demo AR. Karakter tiga dimensi kini tampil di depan Anda. Gunakan gestur cubit untuk mengubah ukuran, atau gerakkan HP untuk melihat dari berbagai sisi.",
         "lang": "id-ID",
         "autoplayOnMarker": true,
         "autoplayOnStart": false,
@@ -35,9 +45,9 @@
     },
     {
       "id": "demo-kanji",
-      "title": "Demo WebXR — Auto Rotate",
-      "description": "Experience WebXR dengan auto-rotate aktif. Model berputar otomatis setelah diletakkan di permukaan. Cocok sebagai demo animasi AR tanpa marker.",
-      "bootText": "Tidak perlu marker! Cukup arahkan kamera ke lantai atau meja hingga lingkaran oranye muncul, lalu tap untuk meletakkan objek yang akan berputar otomatis.",
+      "title": "Demo WebAR — Auto Rotate",
+      "description": "Model berputar otomatis setelah diletakkan. Cocok untuk showcase produk 360°.",
+      "bootText": "Arahkan kamera ke lantai atau meja, lalu tap. Model akan berputar otomatis untuk menampilkan semua sisi.",
       "model": {
         "src": "models/Character.glb",
         "position": "0 0 0",
@@ -45,8 +55,11 @@
         "scale": "0.65 0.65 0.65",
         "animationMixer": true
       },
+      "hotspots": [
+        { "label": "Auto-rotate aktif", "offset": { "x": 0, "y": 0.7, "z": 0 } }
+      ],
       "audio": {
-        "speechText": "Demo auto-rotate aktif. Model berputar otomatis setelah diletakkan. Cubit layar untuk mengubah ukuran, atau gunakan tombol di bawah.",
+        "speechText": "Demo auto-rotate aktif. Model berputar otomatis untuk menampilkan semua sisi. Cubit untuk mengubah ukuran.",
         "lang": "id-ID",
         "autoplayOnMarker": true,
         "autoplayOnStart": false,
@@ -59,7 +72,7 @@
         "minScale": 0.3,
         "maxScale": 2.5,
         "autoRotate": true,
-        "autoRotateStep": 0.5
+        "autoRotateStep": 0.8
       }
     }
   ]
