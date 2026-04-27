@@ -10,7 +10,7 @@
       "description": "Arahkan kamera ke lantai/meja → tap untuk meletakkan karakter 3D. Gerakkan HP untuk melihat dari berbagai sisi.",
       "bootText": "Pastikan lantai atau meja cukup terang. Arahkan kamera perlahan hingga indikator hijau muncul, lalu tap layar.",
       "model": {
-        "src": "models/Character.glb",
+        "src": "models/Kid.glb",
         "position": "0 0 0",
         "rotation": "0 0 0",
         "scale": "0.8 0.8 0.8",
