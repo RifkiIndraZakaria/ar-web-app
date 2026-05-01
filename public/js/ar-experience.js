@@ -226,7 +226,7 @@ async function tryStartWebXRHitTest(scene) {
 const surfaceDetector = {
   confidence: 0,
   isFlat: false,
-  threshold: 55,
+  threshold: 30,
   _canvas: null,
   _ctx: null,
   _prevFrame: null,
@@ -816,18 +816,40 @@ function registerARComponents() {
       let pos;
       if (state.useWebXR) {
         if (!state.latestHitPosition) {
-          setStatus("Bidang belum terdeteksi — arahkan reticle ke lantai/meja", "");
+          setStatus(
+            "Bidang belum terdeteksi — arahkan reticle ke lantai/meja",
+            "",
+          );
           return;
         }
         pos = { ...state.latestHitPosition };
       } else if (!state.useWebXR) {
         const camera = this.el.sceneEl.camera;
         if (camera?.matrixWorld && window.THREE) {
-          const lp = new THREE.Vector3(0, -0.3, -1.5);
-          lp.applyMatrix4(camera.matrixWorld);
+          // Ambil arah pandang kamera lalu proyeksikan ke bidang Y=0 (lantai virtual).
+          // Ini memastikan objek selalu "duduk" di lantai, bukan melayang di udara.
+          const camPos = new THREE.Vector3();
+          const camDir = new THREE.Vector3();
+          camera.getWorldPosition(camPos);
+          camera.getWorldDirection(camDir);
+
+          // Hitung jarak ke bidang Y=0 sepanjang arah pandang
+          // Jika kamera mengarah ke bawah (camDir.y < 0), titik perpotongan ada di depan.
+          // Gunakan jarak default 1.5m jika kamera terlalu horizontal.
+          let t = 1.5; // jarak default (meter) dari kamera ke titik letak
+          if (camDir.y < -0.05) {
+            // kamera mengarah ke bawah — cari persimpangan dengan lantai (Y=0)
+            t = -camPos.y / camDir.y;
+            t = Math.max(0.5, Math.min(4.0, t)); // clamp 0.5m - 4m
+          }
+          const lp = new THREE.Vector3(
+            camPos.x + camDir.x * t,
+            0, // selalu di lantai (Y=0)
+            camPos.z + camDir.z * t,
+          );
           pos = { x: lp.x, y: lp.y, z: lp.z };
         } else {
-          pos = { x: 0, y: -0.5, z: -1.5 };
+          pos = { x: 0, y: 0, z: -1.5 };
         }
       } else {
         return;
@@ -843,8 +865,8 @@ function registerARComponents() {
         this.placed = true;
         state.placed = true;
 
-        // Drop shadow
-        createShadow(this.el.sceneEl, { x: pos.x, y: pos.y - 0.01, z: pos.z });
+        // Drop shadow — selalu di lantai (Y=0)
+        createShadow(this.el.sceneEl, { x: pos.x, y: 0.001, z: pos.z });
 
         // Particles burst
         spawnParticleBurst(pos);
@@ -881,7 +903,7 @@ function registerARComponents() {
         if (state.shadowEntity)
           state.shadowEntity.setAttribute("position", {
             x: pos.x,
-            y: pos.y - 0.01,
+            y: 0.001,
             z: pos.z,
           });
         setStatus("Objek dipindahkan ✓", "success");
@@ -889,25 +911,7 @@ function registerARComponents() {
     },
 
     tick() {
-      // Enforce world-space
-      if (
-        state.placedWorldPos &&
-        this.placed &&
-        !state.useWebXR &&
-        this.modelEl
-      ) {
-        const cur = this.modelEl.getAttribute("position");
-        const wp = state.placedWorldPos;
-        if (
-          Math.abs(cur.x - wp.x) > 0.001 ||
-          Math.abs(cur.y - wp.y) > 0.001 ||
-          Math.abs(cur.z - wp.z) > 0.001
-        ) {
-          this.modelEl.setAttribute("position", wp);
-        }
-      }
-
-      // WebXR hit-test
+      // WebXR hit-test — update reticle
       if (!state.useWebXR || !state.hitTestSource) return;
       const xrFrame = this.el.sceneEl.frame;
       const refSpace = state.xrReferenceSpace;
@@ -1170,8 +1174,18 @@ function bindTouchGestures() {
   );
 
   overlay.addEventListener("click", () => {
-    if (state.scene)
-      state.scene.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    // Langsung panggil handleTap via component reference (bukan dispatch MouseEvent
+    // ke scene, yang bisa gagal karena canvas pointer-events: none)
+    if (state.scene) {
+      const mgr = state.scene.querySelector("[ar-placement-manager]");
+      const comp = mgr?.components?.["ar-placement-manager"];
+      if (comp) {
+        comp.handleTap();
+      } else {
+        // Fallback: dispatch ke scene jika component belum siap
+        state.scene.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      }
+    }
   });
 }
 
@@ -1296,12 +1310,15 @@ function bindUI() {
       showLoading("Mengaktifkan WebXR hit-test...");
       state.useWebXR = await tryStartWebXRHitTest(scene);
 
-      if (!state.useWebXR) {
-        if (!navigator.mediaDevices)
-          throw new Error("Browser tidak mendukung kamera.");
-        showLoading("Mengakses kamera...");
-        await startCameraBackground();
-      }
+      // Selalu start camera background — WebXR gagal maupun tidak.
+      // Ini memastikan video tetap tampil meskipun WebXR sempat mengambil alih DOM.
+      if (!navigator.mediaDevices?.getUserMedia)
+        throw new Error("Browser tidak mendukung kamera.");
+      showLoading("Mengakses kamera...");
+      await startCameraBackground();
+      // Paksa video terlihat (WebXR kadang menyembunyikannya)
+      const _camBg = qs("#camera-bg");
+      if (_camBg) _camBg.classList.remove("hidden");
 
       const hud = qs("#hud");
       if (hud) hud.classList.remove("hidden");
@@ -1339,7 +1356,6 @@ function bindUI() {
         "success",
       );
       autoplayAudio("start");
-
     } catch (err) {
       hideLoading();
       showBoot();
