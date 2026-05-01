@@ -32,7 +32,10 @@ const state = {
   audioElement: null,
   xrSession: null,
   hitTestSource: null,
+  xrReferenceSpace: null,
+  xrReferenceSpaceType: "local",
   useWebXR: false,
+  latestHitPosition: null,
   placedWorldPos: null,
   cameraEntity: null,
   surfaceUIInterval: null,
@@ -150,31 +153,71 @@ function stopCameraBackground() {
 }
 
 // ─── WEBXR HIT-TEST ──────────────────────────────────────────────────────────
+function waitForSceneRenderer(scene) {
+  if (scene?.renderer) return Promise.resolve(scene.renderer);
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error("Renderer AR belum siap.")),
+      3000,
+    );
+    const done = () => {
+      if (!scene.renderer) return;
+      clearTimeout(timeout);
+      resolve(scene.renderer);
+    };
+    scene.addEventListener("loaded", done, { once: true });
+    scene.addEventListener("renderstart", done, { once: true });
+  });
+}
+
 async function tryStartWebXRHitTest(scene) {
+  let session = null;
   try {
     if (!navigator.xr) return false;
-    if (!(await navigator.xr.isSessionSupported("immersive-ar"))) return false;
-    const session = await navigator.xr.requestSession("immersive-ar", {
+    session = await navigator.xr.requestSession("immersive-ar", {
       requiredFeatures: ["hit-test"],
-      optionalFeatures: ["local-floor"],
+      optionalFeatures: ["local-floor", "bounded-floor"],
     });
-    state.xrSession = session;
-    const renderer = scene.renderer;
-    if (renderer?.xr) {
-      renderer.xr.enabled = true;
-      await renderer.xr.setSession(session);
-    }
+
+    let referenceSpaceType = "local-floor";
+    const referenceSpace = await session
+      .requestReferenceSpace(referenceSpaceType)
+      .catch(() => {
+        referenceSpaceType = "local";
+        return session.requestReferenceSpace(referenceSpaceType);
+      });
     const viewerSpace = await session.requestReferenceSpace("viewer");
-    state.hitTestSource = await session.requestHitTestSource({
+    const hitTestSource = await session.requestHitTestSource({
       space: viewerSpace,
     });
+
+    const renderer = await waitForSceneRenderer(scene);
+    if (renderer?.xr) {
+      renderer.xr.enabled = true;
+      renderer.xr.setReferenceSpaceType?.(referenceSpaceType);
+      await renderer.xr.setSession(session);
+    }
+
+    state.xrSession = session;
+    state.xrReferenceSpace = referenceSpace;
+    state.xrReferenceSpaceType = referenceSpaceType;
+    state.hitTestSource = hitTestSource;
     session.addEventListener("end", () => {
+      try {
+        state.hitTestSource?.cancel?.();
+      } catch (_) {}
       state.hitTestSource = null;
+      state.xrReferenceSpace = null;
+      state.xrReferenceSpaceType = "local";
       state.xrSession = null;
+      state.useWebXR = false;
+      state.latestHitPosition = null;
+      state.reticleEntity?.setAttribute("visible", "false");
     });
     return true;
   } catch (err) {
     console.warn("[WebXR hit-test]", err.message);
+    session?.end?.().catch(() => {});
     return false;
   }
 }
@@ -451,6 +494,7 @@ function createHotspots(scene, hotspots, modelPos) {
   if (!hotspots || !hotspots.length) return;
   hotspots.forEach((hs, i) => {
     const group = document.createElement("a-entity");
+    group.setAttribute("id", "hotspot-" + i);
     const off = hs.offset || { x: 0, y: 0.5, z: 0 };
     group.setAttribute("position", {
       x: modelPos.x + off.x,
@@ -500,6 +544,12 @@ function createHotspots(scene, hotspots, modelPos) {
 
     scene.appendChild(group);
   });
+}
+
+function refreshHotspots(modelPos) {
+  qsa("[id^='hotspot-']").forEach((el) => el.parentNode?.removeChild(el));
+  const hotspots = state.experience?.hotspots || [];
+  if (hotspots.length) createHotspots(state.scene, hotspots, modelPos);
 }
 
 // ─── SCREENSHOT & SHARE ──────────────────────────────────────────────────────
@@ -701,15 +751,17 @@ function registerARComponents() {
     init() {
       // Reticle
       const reticle = document.createElement("a-entity");
-      reticle.setAttribute(
+      const ring = document.createElement("a-entity");
+      ring.setAttribute(
         "geometry",
         "primitive:ring;radiusInner:0.05;radiusOuter:0.08;segmentsTheta:32",
       );
-      reticle.setAttribute(
+      ring.setAttribute(
         "material",
         "color:#f97316;shader:flat;side:double;opacity:0.9",
       );
-      reticle.setAttribute("rotation", "-90 0 0");
+      ring.setAttribute("rotation", "-90 0 0");
+      reticle.appendChild(ring);
       reticle.setAttribute("visible", "false");
       reticle.setAttribute(
         "animation__pulse",
@@ -762,8 +814,12 @@ function registerARComponents() {
       }
 
       let pos;
-      if (state.useWebXR && this.reticleEl?.getAttribute("visible")) {
-        pos = this.reticleEl.getAttribute("position");
+      if (state.useWebXR) {
+        if (!state.latestHitPosition) {
+          setStatus("Bidang belum terdeteksi — arahkan reticle ke lantai/meja", "");
+          return;
+        }
+        pos = { ...state.latestHitPosition };
       } else if (!state.useWebXR) {
         const camera = this.el.sceneEl.camera;
         if (camera?.matrixWorld && window.THREE) {
@@ -795,8 +851,7 @@ function registerARComponents() {
 
         // Hotspots
         const exp = state.experience;
-        if (exp?.hotspots?.length)
-          createHotspots(this.el.sceneEl, exp.hotspots, pos);
+        refreshHotspots(pos);
 
         // Gyroscope
         this.el.sceneEl.dispatchEvent(new CustomEvent("gyro-start"));
@@ -854,26 +909,34 @@ function registerARComponents() {
 
       // WebXR hit-test
       if (!state.useWebXR || !state.hitTestSource) return;
-      const renderer = this.el.sceneEl.renderer;
-      if (!renderer?.xr) return;
-      const xrFrame = renderer.xr.getFrame?.();
-      if (!xrFrame) return;
-      const refSpace = renderer.xr.getReferenceSpace();
-      if (!refSpace) return;
+      const xrFrame = this.el.sceneEl.frame;
+      const refSpace = state.xrReferenceSpace;
+      if (!xrFrame || !refSpace) return;
       const hits = xrFrame.getHitTestResults(state.hitTestSource);
       if (hits.length > 0) {
         const pose = hits[0].getPose(refSpace);
         if (pose) {
           const m = pose.transform.matrix;
-          this.reticleEl.setAttribute("position", {
+          const matrix = new THREE.Matrix4().fromArray(m);
+          const position = new THREE.Vector3();
+          const quaternion = new THREE.Quaternion();
+          const scale = new THREE.Vector3();
+          matrix.decompose(position, quaternion, scale);
+
+          this.reticleEl.object3D.position.copy(position);
+          this.reticleEl.object3D.quaternion.copy(quaternion);
+          this.reticleEl.object3D.scale.set(1, 1, 1);
+          this.reticleEl.object3D.updateMatrixWorld(true);
+          state.latestHitPosition = {
             x: m[12],
             y: m[13],
             z: m[14],
-          });
+          };
           this.reticleEl.setAttribute("visible", "true");
         }
       } else {
-        if (!this.placed) this.reticleEl.setAttribute("visible", "false");
+        state.latestHitPosition = null;
+        this.reticleEl.setAttribute("visible", "false");
       }
     },
   });
@@ -1219,21 +1282,26 @@ function bindUI() {
 
     try {
       if (!window.isSecureContext) throw new Error("Halaman harus HTTPS.");
-      if (!navigator.mediaDevices)
-        throw new Error("Browser tidak mendukung kamera.");
       if (!window.AFRAME)
         throw new Error("Library A-Frame gagal dimuat. Refresh halaman.");
 
-      showLoading("Mengakses kamera…");
+      showLoading("Membangun scene AR...");
       hideBoot();
-      await startCameraBackground();
 
-      showLoading("Membangun scene AR…");
       registerARComponents();
-      await sleep(100);
 
       const scene = buildScene(state.experience);
       setupAudio(state.experience);
+
+      showLoading("Mengaktifkan WebXR hit-test...");
+      state.useWebXR = await tryStartWebXRHitTest(scene);
+
+      if (!state.useWebXR) {
+        if (!navigator.mediaDevices)
+          throw new Error("Browser tidak mendukung kamera.");
+        showLoading("Mengakses kamera...");
+        await startCameraBackground();
+      }
 
       const hud = qs("#hud");
       if (hud) hud.classList.remove("hidden");
@@ -1254,7 +1322,7 @@ function bindUI() {
       surfaceDetector.init();
       state.surfaceUIInterval = setInterval(() => {
         surfaceDetector.updateUI();
-        if (state.useWebXR && state.reticleEntity?.getAttribute("visible")) {
+        if (state.useWebXR && state.latestHitPosition) {
           surfaceDetector.confidence = Math.min(
             100,
             surfaceDetector.confidence + 15,
@@ -1264,16 +1332,14 @@ function bindUI() {
       }, 250);
 
       hideLoading();
-      setStatus("Kamera aktif — arahkan ke lantai atau meja", "success");
+      setStatus(
+        state.useWebXR
+          ? "WebXR aktif - arahkan ke lantai lalu tap"
+          : "Kamera aktif - arahkan ke lantai atau meja",
+        "success",
+      );
       autoplayAudio("start");
 
-      // Coba WebXR di background
-      setTimeout(async () => {
-        const ok = await tryStartWebXRHitTest(scene);
-        state.useWebXR = ok;
-        if (ok)
-          setStatus("WebXR aktif — arahkan ke lantai lalu tap", "success");
-      }, 600);
     } catch (err) {
       hideLoading();
       showBoot();
