@@ -1,0 +1,79 @@
+{
+  "site": {
+    "title": "AR Experience Launcher",
+    "baseUrl": "https://rifkiindrazakaria.github.io/ar-web-app"
+  },
+  "experiences": [
+    {
+      "id": "demo-hiro",
+      "title": "Demo WebAR — Character 3D",
+      "description": "Arahkan kamera ke lantai/meja → tap untuk meletakkan karakter 3D. Gerakkan HP untuk melihat dari berbagai sisi.",
+      "bootText": "Pastikan lantai atau meja cukup terang. Arahkan kamera perlahan hingga indikator hijau muncul, lalu tap layar.",
+      "model": {
+        "src": "models/Kid.glb",
+        "position": "0 0 0",
+        "rotation": "0 0 0",
+        "scale": "0.8 0.8 0.8",
+        "animationMixer": true
+      },
+      "hotspots": [
+        {
+          "label": "Karakter 3D Animasi",
+          "offset": { "x": 0, "y": 0.8, "z": 0 }
+        },
+        {
+          "label": "Tap 2x untuk reset pose",
+          "offset": { "x": 0.4, "y": 0.4, "z": 0 }
+        }
+      ],
+      "audio": {
+        "speechText": "Selamat datang di demo AR. Karakter tiga dimensi kini tampil di depan Anda. Gunakan gestur cubit untuk mengubah ukuran, atau gerakkan HP untuk melihat dari berbagai sisi.",
+        "lang": "id-ID",
+        "autoplayOnMarker": true,
+        "autoplayOnStart": false,
+        "loop": false,
+        "volume": 0.9
+      },
+      "interaction": {
+        "rotateStep": 15,
+        "scaleStep": 0.15,
+        "minScale": 0.3,
+        "maxScale": 2.5,
+        "autoRotate": false,
+        "autoRotateStep": 0.5
+      }
+    },
+    {
+      "id": "demo-kanji",
+      "title": "Demo WebAR — Auto Rotate",
+      "description": "Model berputar otomatis setelah diletakkan. Cocok untuk showcase produk 360°.",
+      "bootText": "Arahkan kamera ke lantai atau meja, lalu tap. Model akan berputar otomatis untuk menampilkan semua sisi.",
+      "model": {
+        "src": "models/Character.glb",
+        "position": "0 0 0",
+        "rotation": "0 30 0",
+        "scale": "0.65 0.65 0.65",
+        "animationMixer": true
+      },
+      "hotspots": [
+        { "label": "Auto-rotate aktif", "offset": { "x": 0, "y": 0.7, "z": 0 } }
+      ],
+      "audio": {
+        "speechText": "Demo auto-rotate aktif. Model berputar otomatis untuk menampilkan semua sisi. Cubit untuk mengubah ukuran.",
+        "lang": "id-ID",
+        "autoplayOnMarker": true,
+        "autoplayOnStart": false,
+        "loop": false,
+        "volume": 0.9
+      },
+      "interaction": {
+        "rotateStep": 20,
+        "scaleStep": 0.1,
+        "minScale": 0.3,
+        "maxScale": 2.5,
+        "autoRotate": true,
+        "autoRotateStep": 0.8
+      }
+    }
+  ]
+}
