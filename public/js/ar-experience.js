@@ -552,6 +552,33 @@ function refreshHotspots(modelPos) {
   if (hotspots.length) createHotspots(state.scene, hotspots, modelPos);
 }
 
+function updatePlacementUI() {
+  const bar = qs("#surface-bar");
+  const label = qs("#surface-label");
+  const hint = qs("#surface-hint");
+  const hasHit = Boolean(state.useWebXR && state.latestHitPosition);
+  const isPlaced = Boolean(state.placed);
+
+  if (bar) {
+    bar.style.width = hasHit || isPlaced ? "100%" : "28%";
+    bar.style.background = hasHit || isPlaced ? "#4ade80" : "#f59e0b";
+  }
+  if (label) {
+    label.textContent = isPlaced
+      ? "Objek terkunci"
+      : hasHit
+        ? "Bidang terdeteksi"
+        : "Mencari bidang datar";
+  }
+  if (hint) {
+    hint.textContent = isPlaced
+      ? "Posisi tetap. Drag untuk rotate, cubit untuk zoom"
+      : hasHit
+        ? "Tap layar untuk memunculkan objek"
+        : "Arahkan lingkaran ke lantai atau meja";
+  }
+}
+
 // ─── SCREENSHOT & SHARE ──────────────────────────────────────────────────────
 async function takeScreenshot() {
   try {
@@ -781,9 +808,7 @@ function registerARComponents() {
       if (this.data.animMixer) model.setAttribute("animation-mixer", "");
       model.addEventListener("model-loaded", () => {
         setStatus(
-          state.useWebXR
-            ? "Model dimuat ✓ — Arahkan ke lantai lalu tap"
-            : "Model dimuat ✓ — Tap untuk meletakkan",
+          "Model dimuat - arahkan lingkaran ke bidang datar lalu tap",
           "success",
         );
       });
@@ -800,117 +825,62 @@ function registerARComponents() {
     handleTap() {
       if (!this.modelEl) return;
 
-      // Guard: cek confidence
-      if (!state.useWebXR && !this.placed) {
-        if (!surfaceDetector.isFlat) {
-          setStatus(
-            "Arahkan ke bidang datar dulu — " +
-              Math.round(surfaceDetector.confidence) +
-              "%",
-            "",
-          );
-          return;
-        }
-      }
-
-      let pos;
-      if (state.useWebXR) {
-        if (!state.latestHitPosition) {
-          setStatus(
-            "Bidang belum terdeteksi — arahkan reticle ke lantai/meja",
-            "",
-          );
-          return;
-        }
-        pos = { ...state.latestHitPosition };
-      } else if (!state.useWebXR) {
-        const camera = this.el.sceneEl.camera;
-        if (camera?.matrixWorld && window.THREE) {
-          // Ambil arah pandang kamera lalu proyeksikan ke bidang Y=0 (lantai virtual).
-          // Ini memastikan objek selalu "duduk" di lantai, bukan melayang di udara.
-          const camPos = new THREE.Vector3();
-          const camDir = new THREE.Vector3();
-          camera.getWorldPosition(camPos);
-          camera.getWorldDirection(camDir);
-
-          // Hitung jarak ke bidang Y=0 sepanjang arah pandang
-          // Jika kamera mengarah ke bawah (camDir.y < 0), titik perpotongan ada di depan.
-          // Gunakan jarak default 1.5m jika kamera terlalu horizontal.
-          let t = 1.5; // jarak default (meter) dari kamera ke titik letak
-          if (camDir.y < -0.05) {
-            // kamera mengarah ke bawah — cari persimpangan dengan lantai (Y=0)
-            t = -camPos.y / camDir.y;
-            t = Math.max(0.5, Math.min(4.0, t)); // clamp 0.5m - 4m
-          }
-          const lp = new THREE.Vector3(
-            camPos.x + camDir.x * t,
-            0, // selalu di lantai (Y=0)
-            camPos.z + camDir.z * t,
-          );
-          pos = { x: lp.x, y: lp.y, z: lp.z };
-        } else {
-          pos = { x: 0, y: 0, z: -1.5 };
-        }
-      } else {
+      if (!state.useWebXR) {
+        setStatus("Perangkat tidak mendukung WebXR AR hit-test.", "error");
         return;
       }
 
-      if (!pos) return;
+      if (this.placed) {
+        setStatus("Objek sudah terkunci. Gunakan zoom atau rotate.", "success");
+        return;
+      }
+
+      if (!state.latestHitPosition) {
+        setStatus("Bidang belum terdeteksi - arahkan lingkaran ke lantai/meja", "");
+        return;
+      }
+
+      const pos = { ...state.latestHitPosition };
       state.placedWorldPos = { ...pos };
 
       this.modelEl.setAttribute("position", pos);
       this.modelEl.setAttribute("visible", "true");
+      this.placed = true;
+      state.placed = true;
 
-      if (!this.placed) {
-        this.placed = true;
-        state.placed = true;
+      createShadow(this.el.sceneEl, {
+        x: pos.x,
+        y: pos.y + 0.001,
+        z: pos.z,
+      });
+      spawnParticleBurst(pos);
+      refreshHotspots(pos);
 
-        // Drop shadow — selalu di lantai (Y=0)
-        createShadow(this.el.sceneEl, { x: pos.x, y: 0.001, z: pos.z });
+      this.reticleEl.setAttribute("visible", "false");
+      state.latestHitPosition = null;
 
-        // Particles burst
-        spawnParticleBurst(pos);
+      setStatus("Objek muncul dan terkunci. Cubit untuk zoom, tombol untuk rotate.", "success");
+      autoplayAudio("marker");
 
-        // Hotspots
-        const exp = state.experience;
-        refreshHotspots(pos);
-
-        // Gyroscope
-        this.el.sceneEl.dispatchEvent(new CustomEvent("gyro-start"));
-
-        // Auto-rotate
-        if (exp?.interaction?.autoRotate)
-          startAutoRotate(exp.interaction.autoRotateStep);
-
-        setStatus("✓ Objek diletakkan! Gerakkan HP untuk orbit.", "success");
-        autoplayAudio("marker");
-
-        // Ring indicator
-        const ind = qs("#marker-indicator");
-        if (ind) {
-          ind.classList.add("found");
-          setTimeout(() => ind.classList.remove("found"), 2000);
-        }
-
-        // Reveal scene selector
-        buildSceneSelector(state.allExperiences);
-
-        // Screenshot hint: tampilkan tombol screenshot
-        const ssBtn = qs("#screenshot-btn");
-        if (ssBtn) ssBtn.classList.remove("hidden");
-      } else {
-        // Pindahkan shadow juga
-        if (state.shadowEntity)
-          state.shadowEntity.setAttribute("position", {
-            x: pos.x,
-            y: 0.001,
-            z: pos.z,
-          });
-        setStatus("Objek dipindahkan ✓", "success");
+      const ind = qs("#marker-indicator");
+      if (ind) {
+        ind.classList.add("found");
+        setTimeout(() => ind.classList.remove("found"), 2000);
       }
+
+      buildSceneSelector(state.allExperiences);
+
+      const ssBtn = qs("#screenshot-btn");
+      if (ssBtn) ssBtn.classList.remove("hidden");
     },
 
     tick() {
+      if (this.placed && state.placedWorldPos && this.modelEl) {
+        this.modelEl.setAttribute("position", state.placedWorldPos);
+        this.reticleEl.setAttribute("visible", "false");
+        return;
+      }
+
       // WebXR hit-test — update reticle
       if (!state.useWebXR || !state.hitTestSource) return;
       const xrFrame = this.el.sceneEl.frame;
@@ -990,7 +960,6 @@ function buildScene(exp) {
   cam.setAttribute("position", "0 1.6 0");
   cam.setAttribute("look-controls", "enabled: false");
   cam.setAttribute("wasd-controls", "enabled: false");
-  cam.setAttribute("gyro-camera", "enabled: true");
   scene.appendChild(cam);
   state.cameraEntity = cam;
 
@@ -1071,7 +1040,7 @@ function autoplayAudio(trigger) {
 }
 
 // ─── GYRO / ORBIT MODE TOGGLE ────────────────────────────────────────────────
-let _gyroMode = true;
+let _gyroMode = false;
 function toggleCameraMode() {
   _gyroMode = !_gyroMode;
   const cam = state.cameraEntity;
@@ -1217,7 +1186,7 @@ function bindUI() {
     });
   }
 
-  qs("#mode-toggle")?.addEventListener("click", toggleCameraMode);
+  qs("#mode-toggle")?.classList.add("hidden");
   qs("#play-audio")?.addEventListener("click", () => {
     if (state.userStarted) toggleAudio();
   });
@@ -1226,18 +1195,13 @@ function bindUI() {
   qs("#marker-help")?.addEventListener("click", () => {
     window.alert(
       "Cara pakai AR:\n\n" +
-        "MELETAKKAN OBJEK\n" +
-        "  Arahkan kamera ke lantai/meja → tunggu indikator hijau → tap layar\n\n" +
-        "MODE GYRO (default)\n" +
-        "  Gerakkan HP ke kiri/kanan/atas → kamera berputar di sekitar objek\n\n" +
-        "MODE ORBIT (tap 🔄)\n" +
-        "  Drag 1 jari → putar objek\n" +
-        "  Drag vertikal → lihat dari atas/depan\n\n" +
-        "GESTURE\n" +
-        "  Cubit 2 jari → zoom in/out\n" +
-        "  Ketuk 2x cepat → reset pose\n\n" +
-        "GANTI SCENE\n" +
-        "  Gunakan tombol di bawah layar setelah objek diletakkan",
+        "1. Arahkan kamera ke lantai/meja sampai lingkaran muncul.\n" +
+        "2. Tap layar untuk memunculkan objek di lingkaran.\n" +
+        "3. Objek terkunci di posisi awal.\n\n" +
+        "INTERAKSI\n" +
+        "  Drag 1 jari untuk rotate.\n" +
+        "  Cubit 2 jari untuk zoom.\n" +
+        "  Ketuk 2x cepat untuk reset rotasi/scale."
     );
   });
 
@@ -1310,15 +1274,11 @@ function bindUI() {
       showLoading("Mengaktifkan WebXR hit-test...");
       state.useWebXR = await tryStartWebXRHitTest(scene);
 
-      // Selalu start camera background — WebXR gagal maupun tidak.
-      // Ini memastikan video tetap tampil meskipun WebXR sempat mengambil alih DOM.
-      if (!navigator.mediaDevices?.getUserMedia)
-        throw new Error("Browser tidak mendukung kamera.");
-      showLoading("Mengakses kamera...");
-      await startCameraBackground();
-      // Paksa video terlihat (WebXR kadang menyembunyikannya)
-      const _camBg = qs("#camera-bg");
-      if (_camBg) _camBg.classList.remove("hidden");
+      if (!state.useWebXR) {
+        throw new Error(
+          "Perangkat/browser tidak mendukung WebXR AR hit-test. Gunakan Chrome Android dengan ARCore dan buka lewat HTTPS.",
+        );
+      }
 
       const hud = qs("#hud");
       if (hud) hud.classList.remove("hidden");
@@ -1335,24 +1295,12 @@ function bindUI() {
       state.userStarted = true;
       bindTouchGestures();
 
-      // Surface detector
-      surfaceDetector.init();
-      state.surfaceUIInterval = setInterval(() => {
-        surfaceDetector.updateUI();
-        if (state.useWebXR && state.latestHitPosition) {
-          surfaceDetector.confidence = Math.min(
-            100,
-            surfaceDetector.confidence + 15,
-          );
-          surfaceDetector.isFlat = true;
-        }
-      }, 250);
+      updatePlacementUI();
+      state.surfaceUIInterval = setInterval(updatePlacementUI, 250);
 
       hideLoading();
       setStatus(
-        state.useWebXR
-          ? "WebXR aktif - arahkan ke lantai lalu tap"
-          : "Kamera aktif - arahkan ke lantai atau meja",
+        "Arahkan kamera ke bidang datar sampai lingkaran muncul, lalu tap.",
         "success",
       );
       autoplayAudio("start");
@@ -1380,8 +1328,22 @@ async function main() {
 
     const startBtn = qs("#start-ar");
     if (!window.isSecureContext) {
-      setStatus("Halaman belum HTTPS — kamera tidak bisa diakses.", "error");
+      setStatus("Halaman belum HTTPS - WebXR AR tidak bisa dijalankan.", "error");
       if (startBtn) startBtn.disabled = true;
+    } else if (!navigator.xr) {
+      setStatus("Perangkat/browser tidak mendukung WebXR AR.", "error");
+      if (startBtn) startBtn.disabled = true;
+      const btxt = qs("#boot-text");
+      if (btxt)
+        btxt.textContent =
+          "WebXR AR tidak tersedia di browser ini. Gunakan Chrome Android dengan ARCore.";
+    } else if (!(await navigator.xr.isSessionSupported("immersive-ar").catch(() => false))) {
+      setStatus("WebXR AR tidak tersedia di perangkat ini.", "error");
+      if (startBtn) startBtn.disabled = true;
+      const btxt = qs("#boot-text");
+      if (btxt)
+        btxt.textContent =
+          "Perangkat ini belum mendukung immersive-ar hit-test. Alur AR tidak dijalankan.";
     } else {
       setStatus("Siap. Tekan Mulai AR.");
       if (startBtn) startBtn.disabled = false;
